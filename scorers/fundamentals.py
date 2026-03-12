@@ -1,10 +1,24 @@
 """
-Fundamental Stability scorer — 20 points total.
-  Revenue trend:           5 pts
-  Earnings/profitability:  4 pts
-  Balance sheet health:    5 pts
-  Business durability:     3 pts
-  Capital discipline:      3 pts
+Fundamental Stability scorer — 15 points total.
+  Revenue trend:           4 pts  (was 5)
+  Earnings/profitability:  3 pts  (was 4)
+  Balance sheet health:    4 pts  (was 5)
+  Business durability:     2 pts  (was 3)
+  Capital discipline:      2 pts  (was 3)
+
+Weight reduction rationale:
+  Fundamentals still matter — we are NOT building a pure momentum
+  scanner and junk avoidance remains a design goal.  However, the
+  old 20 pt weight over-rewarded "investment quality" companies at
+  the expense of actual short-term trade opportunity.
+
+  A stock does NOT need to be profitable, high-margin, and debt-free
+  to be a good short-term trade.  It needs to be "not junk" — i.e.,
+  not a going-concern, not a chronic diluter, not a cash-burn disaster.
+
+  Reducing fundamentals to 15 pts frees up 5 pts that are reallocated
+  to Movement (now 28 pts) and the new Reversal scorer (10 pts),
+  making the scanner better at surfacing real trading opportunity.
 """
 import logging
 from typing import Optional, List
@@ -31,11 +45,12 @@ class FundamentalsScorer:
 
         if fundamentals is None or not fundamentals.data_complete:
             fs.notes.append("Incomplete fundamentals — score estimated conservatively")
-            fs.revenue_trend = 2.0
-            fs.earnings_trend = 2.0
-            fs.balance_sheet = 2.0
-            fs.business_durability = 1.5
-            fs.capital_discipline = 1.5
+            # Conservative neutral estimates scaled to new 15-pt total
+            fs.revenue_trend      = 1.6   # ~40% of 4 pts
+            fs.earnings_trend     = 1.2   # ~40% of 3 pts
+            fs.balance_sheet      = 1.6   # ~40% of 4 pts
+            fs.business_durability = 1.0  # ~50% of 2 pts
+            fs.capital_discipline  = 1.0  # ~50% of 2 pts
             fs.total = sum([
                 fs.revenue_trend, fs.earnings_trend, fs.balance_sheet,
                 fs.business_durability, fs.capital_discipline
@@ -63,7 +78,7 @@ class FundamentalsScorer:
         return fs
 
     # ------------------------------------------------------------------ #
-    #  Revenue Trend (0–5)
+    #  Revenue Trend (0–4)
     # ------------------------------------------------------------------ #
 
     def _revenue_trend(self, stmts: List[FinancialStatement]) -> float:
@@ -120,10 +135,10 @@ class FundamentalsScorer:
                 # Modestly improving
                 score += 0.5
 
-        return min(5.0, score)
+        return min(4.0, score)
 
     # ------------------------------------------------------------------ #
-    #  Earnings / Profitability Trend (0–4)
+    #  Earnings / Profitability Trend (0–3)
     # ------------------------------------------------------------------ #
 
     def _earnings_trend(self, stmts: List[FinancialStatement]) -> float:
@@ -193,10 +208,10 @@ class FundamentalsScorer:
                 if op_incomes[-1] > op_incomes[-2]:
                     score += 0.5  # operating leverage improving
 
-        return min(4.0, score)
+        return min(3.0, score)
 
     # ------------------------------------------------------------------ #
-    #  Balance Sheet Health (0–5)
+    #  Balance Sheet Health (0–4)
     # ------------------------------------------------------------------ #
 
     def _balance_sheet(self, balance_sheets: List[BalanceSheetData]) -> float:
@@ -206,7 +221,7 @@ class FundamentalsScorer:
         a historically strong sheet that is now deteriorating.
         """
         if not balance_sheets:
-            return 1.5  # no data — neutral-conservative
+            return 1.2  # no data — neutral-conservative (scaled from 1.5)
 
         latest = balance_sheets[-1]
         score = 0.0
@@ -272,10 +287,10 @@ class FundamentalsScorer:
             elif improvements == 0 and len(balance_sheets) >= 2:
                 score -= 0.5   # all metrics deteriorating = small penalty
 
-        return min(5.0, max(0.0, score))
+        return min(4.0, max(0.0, score))
 
     # ------------------------------------------------------------------ #
-    #  Business Durability (0–3)
+    #  Business Durability (0–2)
     # ------------------------------------------------------------------ #
 
     def _business_durability(
@@ -283,10 +298,10 @@ class FundamentalsScorer:
         reference: Optional[ReferenceData],
         stmts: List[FinancialStatement],
     ) -> float:
-        score = 1.5  # baseline for real company with data
+        score = 1.0  # baseline for real company with data (scaled from 1.5)
 
         if reference is None:
-            return 1.0
+            return 0.67
 
         # Revenue existence
         has_revenue = any(s.revenue and s.revenue > 0 for s in stmts)
@@ -302,33 +317,33 @@ class FundamentalsScorer:
             "healthcare", "real estate", "utilities", "materials", "communication"
         ]
         if any(s in sector for s in durable_sectors):
-            score += 0.5
+            score += 0.33
 
         # Gross margin quality (level)
         margins = [s.gross_margin for s in stmts if s.gross_margin is not None]
         if margins:
             avg_gm = np.mean(margins)
             if avg_gm >= 0.50:
-                score += 1.0
+                score += 0.67
             elif avg_gm >= 0.25:
-                score += 0.5
+                score += 0.33
             # Bonus: margin improving (even if not great yet)
             if len(margins) >= 2 and margins[-1] > margins[-2] + 0.02:
-                score += 0.25  # improving gross margin trajectory
+                score += 0.17  # improving gross margin trajectory
 
         # Operating margin (level + trend)
         op_margins = [s.operating_margin for s in stmts if s.operating_margin is not None]
         if op_margins:
             if np.mean(op_margins) > 0:
-                score += 0.5
+                score += 0.33
             # Bonus: operating margin improving (path to profitability signal)
             if len(op_margins) >= 2 and op_margins[-1] > op_margins[-2]:
-                score += 0.25
+                score += 0.17
 
-        return min(3.0, score)
+        return min(2.0, score)
 
     # ------------------------------------------------------------------ #
-    #  Capital Discipline / Share Count (0–3)
+    #  Capital Discipline / Share Count (0–2)
     # ------------------------------------------------------------------ #
 
     def _capital_discipline(
@@ -336,24 +351,24 @@ class FundamentalsScorer:
         balance_sheets: List[BalanceSheetData],
         event_risk: Optional[EventRiskData],
     ) -> float:
-        score = 3.0  # start full, deduct
+        score = 2.0  # start full, deduct (scaled from 3.0)
 
         if event_risk:
             yoy_change = event_risk.share_count_yoy_pct_change
             if yoy_change is not None:
                 if yoy_change > 25:
-                    score -= 2.5  # severe dilution
+                    score -= 1.67  # severe dilution
                 elif yoy_change > 10:
-                    score -= 1.5
+                    score -= 1.0
                 elif yoy_change > 5:
-                    score -= 0.5
+                    score -= 0.33
                 elif yoy_change < 0:
-                    score = min(3.0, score + 0.5)  # buyback = reward
+                    score = min(2.0, score + 0.33)  # buyback = reward
 
             if event_risk.has_recent_offering_30d:
-                score -= 1.0
+                score -= 0.67
             if event_risk.has_shelf_registration_180d:
-                score -= 0.5
+                score -= 0.33
 
         # Share count trend from balance sheet
         if balance_sheets and len(balance_sheets) >= 2:
@@ -361,8 +376,8 @@ class FundamentalsScorer:
             if len(shares) >= 2:
                 pct_change = (shares[-1] - shares[0]) / shares[0] * 100 if shares[0] else 0
                 if pct_change > 20:
-                    score -= 1.0
+                    score -= 0.67
                 elif pct_change > 10:
-                    score -= 0.5
+                    score -= 0.33
 
-        return max(0.0, min(3.0, score))
+        return max(0.0, min(2.0, score))

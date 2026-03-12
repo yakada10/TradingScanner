@@ -1,12 +1,12 @@
 """
-Database layer for Stock Fitness Agent.
+Database layer for tradetuu.
 
 Handles job queue and persisted scan results.
 Uses SQLite locally and PostgreSQL in production.
 
 Environment variables:
   DATABASE_URL  — full connection string (overrides default SQLite)
-                  SQLite:    sqlite:///./data/stock_fitness.db
+                  SQLite:    sqlite:///./data/tradetuu.db
                   Postgres:  postgresql://user:pass@host:5432/dbname
   DATA_DIR      — directory for SQLite file and cache (default: ./data)
 
@@ -45,7 +45,7 @@ def _data_dir() -> str:
 def _db_url() -> str:
     url = os.environ.get("DATABASE_URL", "")
     if not url:
-        sqlite_path = os.path.join(_data_dir(), "stock_fitness.db")
+        sqlite_path = os.path.join(_data_dir(), "tradetuu.db")
         url = f"sqlite:///{sqlite_path}"
     # Render.com returns postgres:// — SQLAlchemy requires postgresql://
     if url.startswith("postgres://"):

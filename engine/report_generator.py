@@ -36,25 +36,39 @@ class ReportGenerator:
         fit = result.fit_reasons
         concern = result.concern_reasons
 
-        # Technical
-        if bd.technical.monthly_structure >= 8:
+        # Technical (thresholds calibrated for new 22-pt scale: monthly 6, weekly 10, daily 6)
+        if bd.technical.monthly_structure >= 5:
             fit.append("Strong long-term monthly trend structure")
-        elif bd.technical.monthly_structure >= 5:
+        elif bd.technical.monthly_structure >= 3:
             fit.append("Generally constructive monthly chart")
-        elif bd.technical.monthly_structure < 3:
-            concern.append("Weak or damaged monthly trend structure")
+        elif bd.technical.monthly_structure < 2:
+            concern.append("Weak or damaged monthly trend structure — look for reversal signals below")
 
-        if bd.technical.weekly_structure >= 10:
+        if bd.technical.weekly_structure >= 8:
             fit.append("Excellent weekly structure with expansion potential")
-        elif bd.technical.weekly_structure >= 7:
+        elif bd.technical.weekly_structure >= 5:
             fit.append("Healthy weekly trend")
-        elif bd.technical.weekly_structure < 4:
+        elif bd.technical.weekly_structure < 3:
             concern.append("Weak weekly structure")
 
-        if bd.technical.daily_structure >= 7:
+        if bd.technical.daily_structure >= 5:
             fit.append("Bullish daily chart or constructive pullback in uptrend")
-        elif bd.technical.daily_structure < 3:
+        elif bd.technical.daily_structure < 2.5:
             concern.append("Weak or broken daily structure")
+
+        # Reversal / Recovery opportunity signals (new scorer)
+        if bd.reversal.total >= 7:
+            fit.append("Strong reversal / recovery opportunity — early-stage turn in progress")
+        elif bd.reversal.total >= 4:
+            fit.append("Reversal / recovery signals present — structure starting to improve")
+        elif bd.reversal.total >= 2:
+            fit.append("Modest reversal signals — watch for confirmation")
+        if bd.reversal.defended_lows >= 2:
+            fit.append("Meaningful bullish wick rejections — buyers defending key levels")
+        if bd.reversal.higher_lows_forming >= 2.5:
+            fit.append("Clear higher lows forming on daily chart — ascending support")
+        if bd.reversal.post_earnings_reaction >= 1.5:
+            fit.append("Positive earnings reaction with sustained price follow-through")
 
         # Proximity to 52-week high
         if p and p.price_52w_high and p.current_price:
@@ -235,10 +249,11 @@ class ReportGenerator:
             )
             return
 
-        # Build narrative based on scores
-        tech_q = "strong" if bd.technical.total >= 22 else "moderate" if bd.technical.total >= 14 else "weak"
-        move_q = "high" if bd.movement.total >= 14 else "moderate" if bd.movement.total >= 8 else "low"
-        fund_q = "solid" if bd.fundamentals.total >= 14 else "acceptable" if bd.fundamentals.total >= 9 else "weak"
+        # Build narrative based on scores (calibrated for new scale: tech/22, move/28, rev/10, fund/15)
+        tech_q  = "strong"   if bd.technical.total   >= 16 else "moderate" if bd.technical.total   >= 10 else "weak"
+        move_q  = "high"     if bd.movement.total    >= 20 else "moderate" if bd.movement.total    >= 12 else "low"
+        rev_q   = "present"  if bd.reversal.total    >=  4 else "absent"
+        fund_q  = "solid"    if bd.fundamentals.total >= 11 else "acceptable" if bd.fundamentals.total >= 7 else "weak"
 
         price_str = f"${result.current_price:.2f}" if result.current_price else "N/A"
         mcap_str = f"${result.market_cap/1e9:.1f}B" if result.market_cap else "N/A"
@@ -253,12 +268,13 @@ class ReportGenerator:
         result.summary_paragraph = (
             f"{company} ({ticker}) is a {sector} company trading at {price_str} "
             f"with a market cap of {mcap_str}. "
-            f"The higher timeframe technical structure is {tech_q}, "
+            f"Higher-timeframe technical structure is {tech_q}, "
             f"movement/expansion fitness is {move_q}, "
+            f"reversal/recovery opportunity is {rev_q}, "
             f"and fundamental stability is {fund_q}. "
             f"{penalty_note}"
             f"Overall score: {score:.1f}/100 -> Classification: {cls}. "
-            f"Confidence in this evaluation: {result.confidence_score:.0f}/100."
+            f"Confidence: {result.confidence_score:.0f}/100."
         )
 
     # ------------------------------------------------------------------ #
@@ -286,10 +302,11 @@ class ReportGenerator:
                 lines.append(f"    [X] {r}")
         else:
             lines.append(f"  Score Breakdown:")
-            lines.append(f"    Technical Trend:      {bd.technical.total:5.1f} / 30")
-            lines.append(f"    Expansion/Movement:   {bd.movement.total:5.1f} / 20")
+            lines.append(f"    Technical Trend:      {bd.technical.total:5.1f} / 22")
+            lines.append(f"    Expansion/Movement:   {bd.movement.total:5.1f} / 28")
+            lines.append(f"    Reversal/Recovery:    {bd.reversal.total:5.1f} / 10")
             lines.append(f"    Liquidity:            {bd.liquidity.total:5.1f} / 10")
-            lines.append(f"    Fundamentals:         {bd.fundamentals.total:5.1f} / 20")
+            lines.append(f"    Fundamentals:         {bd.fundamentals.total:5.1f} / 15")
             lines.append(f"    News/Earnings/Events: {bd.news_event.total:5.1f} / 15")
             lines.append(f"    Penalties:            {bd.penalties.total:5.1f}")
             lines.append(f"    -------------------------------")

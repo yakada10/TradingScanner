@@ -354,12 +354,13 @@ function buildDetailBody(r) {
   }
   if (!r.hard_reject_flag) {
     const bars = [
-      {label:'Technical Trend', val:bd.technical_trend_score, max:30},
-      {label:'Movement', val:bd.expansion_movement_score, max:20},
-      {label:'Liquidity', val:bd.liquidity_tradability_score, max:10},
-      {label:'Fundamentals', val:bd.fundamental_stability_score, max:20},
-      {label:'News / Events', val:bd.news_event_score, max:15},
-      {label:'Penalties', val:bd.penalties_total, max:0},
+      {label:'Technical Trend',     val:bd.technical_trend_score,       max:22},
+      {label:'Movement / Expansion',val:bd.expansion_movement_score,    max:28},
+      {label:'Reversal / Recovery', val:bd.reversal_recovery_score,     max:10},
+      {label:'Liquidity',           val:bd.liquidity_tradability_score,  max:10},
+      {label:'Fundamentals',        val:bd.fundamental_stability_score,  max:15},
+      {label:'News / Events',       val:bd.news_event_score,             max:15},
+      {label:'Penalties',           val:bd.penalties_total,              max:0},
     ];
     html += `<div class="detail-section"><div class="detail-section-title">Score Breakdown</div>`;
     bars.forEach(b => {

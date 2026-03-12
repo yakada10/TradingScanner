@@ -1,5 +1,5 @@
 """
-Authentication utilities for Stock Fitness Agent.
+Authentication utilities for tradetuu.
 
 Approach: JWT tokens stored in HTTP-only cookies.
   - Login  → issue JWT → set cookie → redirect /dashboard

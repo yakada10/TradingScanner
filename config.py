@@ -1,5 +1,5 @@
 """
-Admin-configurable parameters for the Stock Fitness Agent.
+Admin-configurable parameters for tradetuu.
 All thresholds, windows, and feature flags live here.
 Edit this file to tune the system globally.
 """
@@ -65,10 +65,24 @@ class AgentConfig:
 
     # ------------------------------------------------------------------ #
     #  Classification Thresholds
+    #
+    #  Lowered from 85/70/55 to 82/67/52.
+    #
+    #  Rationale: The scoring rebalance (more weight on Movement/Expansion
+    #  and new Reversal scorer, less on Technical monthly and Fundamentals)
+    #  means that "clean uptrend + strong balance sheet" mega-caps will
+    #  score lower than before.  The thresholds are adjusted so that the
+    #  meaningful bands (Ideal Fit = best short-term opportunity, Tradable
+    #  = usable setup) remain appropriately selective.
+    #
+    #  A stock with: excellent movement + early reversal + acceptable
+    #  fundamentals + good news context should reach ~75–82 and land in
+    #  Tradable–Ideal Fit.  A slow large-cap with perfect fundamentals
+    #  but low ADR will score ~55–65 — Watchlist Only or lower.
     # ------------------------------------------------------------------ #
-    ideal_fit_min: float = 85.0
-    tradable_min: float = 70.0
-    watchlist_min: float = 55.0
+    ideal_fit_min: float = 82.0
+    tradable_min: float = 67.0
+    watchlist_min: float = 52.0
     # below watchlist_min => Avoid
 
     # ------------------------------------------------------------------ #

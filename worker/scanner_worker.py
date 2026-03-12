@@ -1,5 +1,5 @@
 """
-Stock Fitness Agent — Background Scanner Worker
+tradetuu — Background Scanner Worker
 
 Two operating modes:
   1. Inline thread (default for Render free tier single dyno):

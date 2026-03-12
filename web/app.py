@@ -1,5 +1,5 @@
 """
-Stock Fitness Agent — Web API + UI Server
+tradetuu — Web API + UI Server
 
 Routes:
   GET  /                  → redirect to /dashboard (or /login)
@@ -146,7 +146,7 @@ async def lifespan(app_instance):
 # ─────────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Stock Fitness Agent",
+    title="tradetuu",
     version="3.0.0",
     lifespan=lifespan,
     docs_url=None,
@@ -172,7 +172,7 @@ async def redirect_to_login(request: Request, exc: _RedirectToLogin):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "stock-fitness-agent"}
+    return {"status": "ok", "service": "tradetuu"}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -422,5 +422,5 @@ async def evaluate_ticker(request: Request, body: EvaluateRequest):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 5000))
-    print(f"Stock Fitness Agent → http://localhost:{port}")
+    print(f"tradetuu → http://localhost:{port}")
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")

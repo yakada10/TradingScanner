@@ -1,2 +1,2 @@
-# Stock Fitness Agent
+# tradetuu
 __version__ = "1.0.0"

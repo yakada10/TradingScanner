@@ -16,6 +16,7 @@ from providers.event_risk import EventRiskProvider, EventRiskData
 
 from scorers.technical import TechnicalScorer
 from scorers.movement import MovementScorer
+from scorers.reversal import ReversalScorer
 from scorers.liquidity import LiquidityScorer
 from scorers.fundamentals import FundamentalsScorer
 from scorers.news_event import NewsEventScorer
@@ -45,6 +46,7 @@ class ScoringPipeline:
         # Scorers
         self._technical = TechnicalScorer()
         self._movement = MovementScorer()
+        self._reversal = ReversalScorer()
         self._liquidity = LiquidityScorer()
         self._fundamentals_scorer = FundamentalsScorer()
         self._news_event = NewsEventScorer()
@@ -208,12 +210,13 @@ class ScoringPipeline:
         er = stock.event_risk
 
         breakdown = ScoreBreakdown()
-        breakdown.technical = self._technical.score(p)
-        breakdown.movement = self._movement.score(p)
-        breakdown.liquidity = self._liquidity.score(p, r)
+        breakdown.technical    = self._technical.score(p)
+        breakdown.movement     = self._movement.score(p)
+        breakdown.reversal     = self._reversal.score(p, e)
+        breakdown.liquidity    = self._liquidity.score(p, r)
         breakdown.fundamentals = self._fundamentals_scorer.score(f, r, er)
-        breakdown.news_event = self._news_event.score(e, n, er)
-        breakdown.penalties = self._penalty.compute(p, r, er, e, n)
+        breakdown.news_event   = self._news_event.score(e, n, er)
+        breakdown.penalties    = self._penalty.compute(p, r, er, e, n)
 
         result = TickerResult(ticker=stock.ticker)
         result.breakdown = breakdown

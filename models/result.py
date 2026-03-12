@@ -1,5 +1,14 @@
 """
 Output models for scoring results and final classification.
+
+Score distribution (100 pts total):
+  Technical Trend Fitness       22 pts  (monthly 6 / weekly 10 / daily 6)
+  Expansion / Movement          28 pts  (ADR 10 / daily-exp 7 / weekly-exp 5 / vol-qual 6)
+  Reversal / Recovery           10 pts  (defended-lows 3 / higher-lows 3 / post-earnings 2 / weekly-rev 2)
+  Liquidity / Tradability       10 pts
+  Fundamental Stability         15 pts  (revenue 4 / earnings 3 / balance-sheet 4 / durability 2 / capital 2)
+  News / Events                 15 pts
+  Penalties overlay           0 to -25 pts
 """
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
@@ -15,20 +24,35 @@ class Classification(str, Enum):
 
 @dataclass
 class TechnicalScore:
-    monthly_structure: float = 0.0    # 0-10
-    weekly_structure: float = 0.0     # 0-12
-    daily_structure: float = 0.0      # 0-8
-    total: float = 0.0                # 0-30
+    monthly_structure: float = 0.0    # 0-6
+    weekly_structure: float = 0.0     # 0-10
+    daily_structure: float = 0.0      # 0-6
+    total: float = 0.0                # 0-22
     notes: List[str] = field(default_factory=list)
 
 
 @dataclass
 class MovementScore:
-    atr_adr_relative: float = 0.0     # 0-8
-    daily_expansion: float = 0.0      # 0-5
-    weekly_expansion: float = 0.0     # 0-4
-    volatility_quality: float = 0.0   # 0-3
-    total: float = 0.0                # 0-20
+    atr_adr_relative: float = 0.0     # 0-10
+    daily_expansion: float = 0.0      # 0-7
+    weekly_expansion: float = 0.0     # 0-5
+    volatility_quality: float = 0.0   # 0-6
+    total: float = 0.0                # 0-28
+    notes: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ReversalScore:
+    """
+    Reversal / Recovery Opportunity (0–10 pts).
+    Detects early-stage turning points useful for scalp traders even when
+    the longer-term chart is not yet fully repaired.
+    """
+    defended_lows: float = 0.0          # 0-3  — rejection wicks / defended levels
+    higher_lows_forming: float = 0.0    # 0-3  — ascending low structure on daily
+    post_earnings_reaction: float = 0.0 # 0-2  — beat + held gains / followed through
+    weekly_reversal: float = 0.0        # 0-2  — weekly stabilization / reversal structure
+    total: float = 0.0                  # 0-10
     notes: List[str] = field(default_factory=list)
 
 
@@ -44,12 +68,12 @@ class LiquidityScore:
 
 @dataclass
 class FundamentalsScore:
-    revenue_trend: float = 0.0        # 0-5
-    earnings_trend: float = 0.0       # 0-4
-    balance_sheet: float = 0.0        # 0-5
-    business_durability: float = 0.0  # 0-3
-    capital_discipline: float = 0.0   # 0-3
-    total: float = 0.0                # 0-20
+    revenue_trend: float = 0.0        # 0-4
+    earnings_trend: float = 0.0       # 0-3
+    balance_sheet: float = 0.0        # 0-4
+    business_durability: float = 0.0  # 0-2
+    capital_discipline: float = 0.0   # 0-2
+    total: float = 0.0                # 0-15
     notes: List[str] = field(default_factory=list)
 
 
@@ -81,6 +105,7 @@ class PenaltyResult:
 class ScoreBreakdown:
     technical: TechnicalScore = field(default_factory=TechnicalScore)
     movement: MovementScore = field(default_factory=MovementScore)
+    reversal: ReversalScore = field(default_factory=ReversalScore)
     liquidity: LiquidityScore = field(default_factory=LiquidityScore)
     fundamentals: FundamentalsScore = field(default_factory=FundamentalsScore)
     news_event: NewsEventScore = field(default_factory=NewsEventScore)
@@ -91,6 +116,7 @@ class ScoreBreakdown:
         return (
             self.technical.total
             + self.movement.total
+            + self.reversal.total
             + self.liquidity.total
             + self.fundamentals.total
             + self.news_event.total

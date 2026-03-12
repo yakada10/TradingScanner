@@ -1,5 +1,5 @@
 """
-Stock Fitness Agent — main entry point.
+tradetuu — main entry point.
 
 Usage examples:
   python main.py evaluate AAPL
@@ -183,7 +183,7 @@ def cmd_scan(args, pipeline: ScoringPipeline):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Stock Fitness Agent — evaluates stocks for active trading style fit",
+        description="tradetuu — evaluates stocks for short-term trading opportunity",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
