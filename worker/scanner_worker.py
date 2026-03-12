@@ -21,6 +21,7 @@ and picked up again automatically.
 import sys
 import os
 import time
+import gc
 import logging
 import threading
 from typing import Optional
@@ -110,8 +111,14 @@ def process_job(job: dict) -> None:
             try:
                 result = pipeline.evaluate(ticker)
                 db.save_ticker_result(job_id, result_to_dict(result))
+                del result  # release pandas DataFrames held in result object
             except Exception as exc:
                 log.warning("[%s] Error evaluating %s: %s", job_id, ticker, exc)
+            finally:
+                # Force Python GC every ticker to prevent cumulative memory buildup.
+                # pandas DataFrames (OHLCV history) are the main culprit — without
+                # explicit collection they accumulate and cause OOM on long scans.
+                gc.collect()
 
         db.update_job_progress(job_id, len(tickers), "")
         db.update_job_completed(job_id)
