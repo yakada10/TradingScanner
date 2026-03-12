@@ -61,6 +61,18 @@ services:
       - key: SECRET_KEY
         sync: false
 
+      # Admin account — auto-created on first startup if no users exist.
+      # Set ADMIN_PASSWORD in the Render dashboard before first deploy.
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false   # set your real password in the Render dashboard
+
+      # Signup is closed — only the admin account can log in.
+      # Set to "true" to re-enable public registration later.
+      - key: ALLOW_SIGNUP
+        value: "false"
+
       # Web service does NOT run the worker inline.
       # The scanner runs as a separate background worker process.
       - key: RUN_WORKER_INLINE

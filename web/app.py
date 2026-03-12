@@ -106,12 +106,29 @@ _USERNAME_RE = re.compile(r'^[a-zA-Z0-9_]{3,32}$')
 #  Lifespan
 # ─────────────────────────────────────────────────────────────────
 
+def _ensure_admin_user() -> None:
+    """
+    On startup, create the admin account if no users exist yet.
+    Credentials come from env vars ADMIN_USERNAME / ADMIN_PASSWORD.
+    Defaults: admin / changeme  (change immediately via env vars in production).
+    """
+    if db.count_users() > 0:
+        return  # users already exist, skip
+    username = os.environ.get("ADMIN_USERNAME", "admin")
+    password = os.environ.get("ADMIN_PASSWORD", "tradeovo10$")
+    db.create_user(username, hash_password(password), email=None)
+    log.info("Default admin account created — username: '%s' (set ADMIN_PASSWORD env var to secure it)", username)
+
+
 @asynccontextmanager
 async def lifespan(app_instance):
     db.get_engine()
     n = db.reset_interrupted_jobs()
     if n:
         log.info("Reset %d interrupted job(s) to pending on startup", n)
+
+    # Auto-create admin if DB is fresh
+    _ensure_admin_user()
 
     run_inline = os.environ.get("RUN_WORKER_INLINE", "true").lower() != "false"
     if run_inline:
@@ -195,9 +212,24 @@ async def login_post(
 
 
 # ── Signup ────────────────────────────────────────────────────────
+# Controlled by ALLOW_SIGNUP env var (default: false).
+# Set ALLOW_SIGNUP=true to re-enable public registration.
+
+def _signup_enabled() -> bool:
+    return os.environ.get("ALLOW_SIGNUP", "false").lower() == "true"
+
+
+def _signup_closed_response(request: Request):
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "error": "Account registration is currently closed.",
+    }, status_code=403)
+
 
 @app.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request):
+    if not _signup_enabled():
+        return _signup_closed_response(request)
     if get_current_user(request):
         return RedirectResponse(url="/dashboard", status_code=303)
     return templates.TemplateResponse("signup.html", {"request": request})
@@ -211,6 +243,9 @@ async def signup_post(
     password: str = Form(...),
     confirm_password: str = Form(...),
 ):
+    if not _signup_enabled():
+        return _signup_closed_response(request)
+
     username = username.strip()
     email = email.strip() or None
 
