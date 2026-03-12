@@ -38,7 +38,7 @@ services:
 
   # ── 1. Web service (API + dashboard) ───────────────────────────────
   - type: web
-    name: stockscanner
+    name: tradingscanner
     env: python
     region: oregon
     plan: starter            # $7/mo — always-on, no spin-down on inactivity
