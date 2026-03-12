@@ -68,11 +68,16 @@ def get_engine() -> Engine:
 
 
 def _init_schema(engine: Engine) -> None:
+    # SQLite uses INTEGER PRIMARY KEY (auto-increments implicitly).
+    # PostgreSQL requires SERIAL or BIGSERIAL for auto-increment.
+    is_pg = engine.dialect.name == "postgresql"
+    id_col = "id BIGSERIAL PRIMARY KEY" if is_pg else "id INTEGER PRIMARY KEY"
+
     with engine.connect() as conn:
         # Users — stores login credentials
-        conn.execute(text("""
+        conn.execute(text(f"""
             CREATE TABLE IF NOT EXISTS users (
-                id               INTEGER PRIMARY KEY,
+                {id_col},
                 username         TEXT NOT NULL UNIQUE,
                 email            TEXT UNIQUE,
                 hashed_password  TEXT NOT NULL,
