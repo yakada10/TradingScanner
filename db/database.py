@@ -294,6 +294,56 @@ def get_job_result_count(job_id: str) -> int:
 
 
 # ------------------------------------------------------------------ #
+#  Cleanup
+# ------------------------------------------------------------------ #
+
+def purge_old_jobs(keep_days: int = 30) -> int:
+    """
+    Delete completed/failed/cancelled scan jobs and their results older than
+    keep_days days. Keeps the most recent scans for history.
+    Returns the number of jobs deleted.
+
+    Run this periodically (e.g. once per day from the worker) to prevent the
+    database from growing unboundedly. With daily S&P 500 scans at ~1.2 MB each,
+    keeping 30 days uses ~36 MB — well within the basic-256mb Postgres limit.
+    """
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=keep_days)).isoformat()
+
+    with get_engine().connect() as conn:
+        # Find old job IDs first
+        rows = conn.execute(
+            text("""
+                SELECT id FROM scan_jobs
+                WHERE status IN ('completed', 'failed', 'cancelled')
+                  AND created_at < :cutoff
+            """),
+            {"cutoff": cutoff}
+        ).fetchall()
+
+        if not rows:
+            return 0
+
+        old_ids = [r[0] for r in rows]
+        placeholders = ",".join(f":id{i}" for i in range(len(old_ids)))
+        params = {f"id{i}": oid for i, oid in enumerate(old_ids)}
+
+        # Delete results first (FK constraint)
+        conn.execute(
+            text(f"DELETE FROM ticker_results WHERE job_id IN ({placeholders})"),
+            params
+        )
+        conn.execute(
+            text(f"DELETE FROM scan_jobs WHERE id IN ({placeholders})"),
+            params
+        )
+        conn.commit()
+
+    log.info("Purged %d old scan job(s) older than %d days", len(old_ids), keep_days)
+    return len(old_ids)
+
+
+# ------------------------------------------------------------------ #
 #  Helpers
 # ------------------------------------------------------------------ #
 

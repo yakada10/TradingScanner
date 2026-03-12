@@ -132,9 +132,24 @@ def run_worker_loop() -> None:
     In inline mode this is called in a daemon thread.
     In standalone mode this is called as __main__.
     """
-    log.info("Scanner worker started (poll interval %ds)", POLL_INTERVAL)
+    KEEP_DAYS = int(os.environ.get("SCAN_HISTORY_DAYS", "30"))
+    CLEANUP_INTERVAL = 86400  # run cleanup once per day (seconds)
+    last_cleanup = 0.0
+
+    log.info("Scanner worker started (poll interval %ds, history kept %d days)",
+             POLL_INTERVAL, KEEP_DAYS)
+
     while True:
         try:
+            # Daily cleanup — purge scans older than KEEP_DAYS
+            now = time.time()
+            if now - last_cleanup >= CLEANUP_INTERVAL:
+                try:
+                    db.purge_old_jobs(keep_days=KEEP_DAYS)
+                except Exception as exc:
+                    log.warning("Cleanup error: %s", exc)
+                last_cleanup = now
+
             jobs = db.get_pending_jobs(limit=1)
             if jobs:
                 job = jobs[0]

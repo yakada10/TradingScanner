@@ -112,6 +112,12 @@ services:
       - key: WORKER_POLL_INTERVAL
         value: "5"
 
+      # How many days of scan history to retain (older scans are auto-deleted daily)
+      # S&P 500 daily at 30 days = ~36 MB. Nasdaq Full daily at 30 days = ~210 MB.
+      # Reduce to 7 if running Nasdaq/NYSE full scans daily on the basic-256mb plan.
+      - key: SCAN_HISTORY_DAYS
+        value: "30"
+
       # Wired automatically from the same Postgres database
       - key: DATABASE_URL
         fromDatabase:
