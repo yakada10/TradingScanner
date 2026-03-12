@@ -69,6 +69,17 @@ def get_engine() -> Engine:
 
 def _init_schema(engine: Engine) -> None:
     with engine.connect() as conn:
+        # Users — stores login credentials
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS users (
+                id               INTEGER PRIMARY KEY,
+                username         TEXT NOT NULL UNIQUE,
+                email            TEXT UNIQUE,
+                hashed_password  TEXT NOT NULL,
+                created_at       TEXT NOT NULL
+            )
+        """))
+
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS scan_jobs (
                 id                 TEXT PRIMARY KEY,
@@ -80,7 +91,8 @@ def _init_schema(engine: Engine) -> None:
                 total_tickers      INTEGER DEFAULT 0,
                 processed_tickers  INTEGER DEFAULT 0,
                 current_ticker     TEXT DEFAULT '',
-                error_message      TEXT
+                error_message      TEXT,
+                user_id            INTEGER
             )
         """))
         conn.execute(text("""
@@ -291,6 +303,108 @@ def get_job_result_count(job_id: str) -> int:
             {"id": job_id}
         ).fetchone()
     return row[0] if row else 0
+
+
+# ------------------------------------------------------------------ #
+#  User CRUD
+# ------------------------------------------------------------------ #
+
+def create_user(username: str, hashed_password: str, email: Optional[str] = None) -> int:
+    """Create a new user. Returns the new user's id."""
+    with get_engine().connect() as conn:
+        result = conn.execute(text("""
+            INSERT INTO users (username, email, hashed_password, created_at)
+            VALUES (:username, :email, :pw, :ts)
+        """), {"username": username, "email": email, "pw": hashed_password, "ts": _now()})
+        conn.commit()
+        # Fetch the inserted id
+        row = conn.execute(
+            text("SELECT id FROM users WHERE username = :u"), {"u": username}
+        ).fetchone()
+        return row[0] if row else 0
+
+
+def get_user_by_username(username: str) -> Optional[Dict]:
+    with get_engine().connect() as conn:
+        row = conn.execute(
+            text("SELECT * FROM users WHERE username = :u"), {"u": username}
+        ).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def get_user_by_id(user_id: int) -> Optional[Dict]:
+    with get_engine().connect() as conn:
+        row = conn.execute(
+            text("SELECT * FROM users WHERE id = :id"), {"id": user_id}
+        ).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def count_users() -> int:
+    with get_engine().connect() as conn:
+        row = conn.execute(text("SELECT COUNT(*) FROM users")).fetchone()
+    return row[0] if row else 0
+
+
+# ------------------------------------------------------------------ #
+#  Dashboard queries
+# ------------------------------------------------------------------ #
+
+def get_dashboard_stats() -> Dict:
+    """
+    Returns aggregate stats for the dashboard page:
+      total_scans, latest_job, classification_counts, top_results
+    """
+    with get_engine().connect() as conn:
+        # Total completed scans
+        row = conn.execute(
+            text("SELECT COUNT(*) FROM scan_jobs WHERE status='completed'")
+        ).fetchone()
+        total_scans = row[0] if row else 0
+
+        # Latest completed job
+        row = conn.execute(text("""
+            SELECT id, universe, completed_at, total_tickers, processed_tickers
+            FROM scan_jobs
+            WHERE status='completed'
+            ORDER BY completed_at DESC
+            LIMIT 1
+        """)).mappings().fetchone()
+        latest_job = dict(row) if row else None
+
+        classification_counts = {"IDEAL_FIT": 0, "TRADABLE": 0, "WATCHLIST_ONLY": 0, "AVOID": 0}
+        top_results = []
+
+        if latest_job:
+            # Classification counts for latest job
+            rows = conn.execute(text("""
+                SELECT classification, COUNT(*) as cnt
+                FROM ticker_results
+                WHERE job_id = :jid AND hard_reject_flag = 0
+                GROUP BY classification
+            """), {"jid": latest_job["id"]}).fetchall()
+            for r in rows:
+                if r[0] in classification_counts:
+                    classification_counts[r[0]] = r[1]
+
+            # Top results (Ideal + Tradable) from latest job
+            rows = conn.execute(text("""
+                SELECT ticker, company_name, sector, classification, final_score
+                FROM ticker_results
+                WHERE job_id = :jid
+                  AND classification IN ('IDEAL_FIT', 'TRADABLE')
+                  AND hard_reject_flag = 0
+                ORDER BY final_score DESC
+                LIMIT 8
+            """), {"jid": latest_job["id"]}).mappings().fetchall()
+            top_results = [dict(r) for r in rows]
+
+    return {
+        "total_scans": total_scans,
+        "latest_job": latest_job,
+        "classification_counts": classification_counts,
+        "top_results": top_results,
+    }
 
 
 # ------------------------------------------------------------------ #

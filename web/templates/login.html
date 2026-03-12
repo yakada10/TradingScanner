@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign In — Stock Fitness Agent</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <h1>Stock <span>Fitness</span></h1>
+      <p>Trading Scanner & Stock Evaluator</p>
+    </div>
+
+    <div class="auth-title">Sign in to your account</div>
+
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+
+    {% if success %}
+    <div class="alert alert-success">{{ success }}</div>
+    {% endif %}
+
+    <form method="post" action="/login">
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input class="form-input {% if error %}error{% endif %}"
+               type="text" name="username" autocomplete="username"
+               value="{{ username or '' }}" required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input {% if error %}error{% endif %}"
+               type="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg" style="margin-top:8px">
+        Sign in
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      Don't have an account?
+      <a href="/signup">Create one</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

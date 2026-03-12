@@ -15,6 +15,12 @@ html5lib>=1.1      # fallback HTML parser
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
 pydantic>=2.0.0
+jinja2>=3.1.0          # server-side HTML templates
+python-multipart>=0.0.9  # form parsing (login/signup forms)
+
+# ── Authentication ────────────────────────────────────────────────────
+python-jose[cryptography]>=3.3.0  # JWT tokens
+bcrypt>=4.0.0                     # password hashing (used directly, not via passlib)
 
 # ── Database ─────────────────────────────────────────────────────────
 sqlalchemy>=2.0.0

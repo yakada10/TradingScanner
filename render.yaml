@@ -38,7 +38,7 @@ services:
 
   # ── 1. Web service (API + dashboard) ───────────────────────────────
   - type: web
-    name: tradingscanner
+    name: tradeovo
     env: python
     region: oregon
     plan: starter            # $7/mo — always-on, no spin-down on inactivity
@@ -55,6 +55,11 @@ services:
 
       - key: LOG_LEVEL
         value: INFO
+
+      # REQUIRED: generate with: python -c "import secrets; print(secrets.token_hex(32))"
+      # Set this in the Render dashboard — do not commit the real value.
+      - key: SECRET_KEY
+        sync: false
 
       # Web service does NOT run the worker inline.
       # The scanner runs as a separate background worker process.

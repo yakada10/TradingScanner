@@ -1,0 +1,449 @@
+{% extends "base.html" %}
+
+{% block title %}Scanner — Stock Fitness Agent{% endblock %}
+{% block page_title %}Scanner{% endblock %}
+{% block page_sub %}<span id="scanStatus"></span>{% endblock %}
+
+{% block topbar_right %}
+<span id="lastScanTime" style="font-size:11px;color:var(--text-dim);"></span>
+{% endblock %}
+
+{% block content %}
+<div class="scanner-layout">
+
+  <!-- Scanner main area -->
+  <div class="scanner-main">
+
+    <!-- Controls -->
+    <div class="scanner-controls">
+      <button class="btn btn-primary" id="scanSP500Btn" onclick="startScan('sp500')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <span>S&amp;P 500</span>
+      </button>
+      <button class="btn btn-primary" id="scanNasdaqBtn" onclick="startScan('nasdaq_full')"
+              title="All Nasdaq-listed common stocks (~3,000+ tickers)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <span>Nasdaq Full</span>
+      </button>
+      <button class="btn btn-primary" id="scanFullBtn" onclick="startScan('nyse_nasdaq_full')"
+              title="Nasdaq + NYSE + AMEX (~4,500+ tickers)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <span>NYSE + Nasdaq</span>
+      </button>
+
+      <div class="ticker-input-wrap">
+        <input type="text" id="tickerInput" placeholder="Ticker (e.g. NVDA)"
+               onkeydown="if(event.key==='Enter') evaluateTicker()">
+        <button class="btn" id="evaluateBtn" onclick="evaluateTicker()">Evaluate</button>
+      </div>
+
+      <button class="btn btn-danger" id="cancelBtn" onclick="cancelScan()" style="display:none">
+        Cancel
+      </button>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-card" id="progressSection">
+      <div class="progress-header">
+        <div class="progress-label">
+          Scanning <strong id="progressUniverse"></strong> &mdash;
+          <strong id="progressCurrent"></strong>
+          (<span id="progressDone">0</span> / <span id="progressTotal">0</span>)
+        </div>
+        <div class="progress-pct" id="progressPct">0%</div>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <div class="filter-chip active" id="statAll" onclick="setFilter('all')">
+        All <span class="filter-count" id="countAll">0</span>
+      </div>
+      <div class="filter-chip" id="statIdeal" onclick="setFilter('IDEAL_FIT')">
+        <span class="filter-dot ideal"></span>
+        Ideal Fit <span class="filter-count" id="countIdeal">0</span>
+      </div>
+      <div class="filter-chip" id="statTradable" onclick="setFilter('TRADABLE')">
+        <span class="filter-dot tradable"></span>
+        Tradable <span class="filter-count" id="countTradable">0</span>
+      </div>
+      <div class="filter-chip" id="statWatchlist" onclick="setFilter('WATCHLIST_ONLY')">
+        <span class="filter-dot watchlist"></span>
+        Watchlist <span class="filter-count" id="countWatchlist">0</span>
+      </div>
+      <div class="filter-chip" id="statAvoid" onclick="setFilter('AVOID')">
+        <span class="filter-dot avoid"></span>
+        Avoid <span class="filter-count" id="countAvoid">0</span>
+      </div>
+    </div>
+
+    <!-- Results table -->
+    <div class="table-card">
+      <div class="table-scroll">
+        <table id="resultsTable">
+          <thead>
+            <tr>
+              <th onclick="sortBy('classification')">Grade</th>
+              <th onclick="sortBy('ticker')">Ticker</th>
+              <th onclick="sortBy('company_name')">Company</th>
+              <th onclick="sortBy('sector')" class="sector-cell-h">Sector</th>
+              <th onclick="sortBy('final_score')">Score</th>
+              <th onclick="sortBy('current_price')">Price</th>
+              <th onclick="sortBy('market_cap')" class="mktcap-cell-h">Mkt Cap</th>
+              <th onclick="sortBy('adr')">ADR%</th>
+              <th onclick="sortBy('next_earnings_date')">Earnings</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+        <div class="empty-state" id="emptyState">
+          <div class="icon">&#9650;</div>
+          <h3>No results yet</h3>
+          <p>Click a scan button above to evaluate the full universe, or type a ticker to evaluate it individually.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /scanner-main -->
+
+  <!-- Detail panel -->
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-header">
+      <button class="detail-close" onclick="closeDetail()">&#x2715;</button>
+      <div class="detail-ticker" id="dTicker">—</div>
+      <div class="detail-company" id="dCompany"></div>
+      <div class="detail-meta" id="dMeta"></div>
+      <div class="detail-score-row">
+        <div>
+          <div class="detail-score-big" id="dScore">—</div>
+          <div class="detail-score-label">/100 Overall Score</div>
+        </div>
+        <div class="detail-grade-big grade-badge" id="dGrade">—</div>
+        <div class="confidence-badge">
+          Confidence<span id="dConfidence">—</span>
+        </div>
+      </div>
+    </div>
+    <div class="detail-body" id="dBody"></div>
+  </div>
+
+</div><!-- /scanner-layout -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── STATE ────────────────────────────────────────────────────────
+let allResults = [];
+let currentFilter = 'all';
+let sortKey = 'final_score';
+let sortAsc = false;
+let selectedTicker = null;
+let pollInterval = null;
+let activeJobId = null;
+
+const GRADE_LABEL = { 'IDEAL_FIT':'A','TRADABLE':'B','WATCHLIST_ONLY':'C','AVOID':'D' };
+const _UNIVERSE_LABELS = { 'sp500':'S&P 500','sp500_extended':'S&P 500 + Mid Cap','nasdaq_full':'Nasdaq Full','nyse_nasdaq_full':'NYSE + Nasdaq' };
+const _SCAN_BTNS = ['scanSP500Btn','scanNasdaqBtn','scanFullBtn'];
+
+function _setScanBtns(disabled) {
+  _SCAN_BTNS.forEach(id => { const el = document.getElementById(id); if(el) el.disabled = disabled; });
+}
+
+// ── SCAN ────────────────────────────────────────────────────────
+async function startScan(universe) {
+  const res = await apiFetch('/api/scan', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({universe})
+  });
+  if (!res) return;
+  const data = await res.json();
+  if (data.error || data.detail) { toast(data.error || data.detail, 'error'); return; }
+
+  activeJobId = data.job_id;
+  allResults = [];
+  renderTable();
+  updateStats();
+  document.getElementById('progressSection').classList.add('visible');
+  document.getElementById('cancelBtn').style.display = 'inline-flex';
+  _setScanBtns(true);
+  document.getElementById('progressUniverse').textContent = _UNIVERSE_LABELS[universe] || universe;
+  document.getElementById('progressTotal').textContent = '...';
+  pollInterval = setInterval(pollProgress, 2000);
+}
+
+async function cancelScan() {
+  if (!activeJobId) return;
+  await apiFetch(`/api/scan/${activeJobId}/cancel`, {method:'POST'});
+  toast('Scan cancelled');
+}
+
+async function pollProgress() {
+  if (!activeJobId) return;
+  try {
+    const res = await apiFetch(`/api/scan/${activeJobId}/progress`);
+    if (!res) return;
+    const p = await res.json();
+    const running = p.status === 'running' || p.status === 'pending';
+    document.getElementById('progressFill').style.width = p.percent + '%';
+    document.getElementById('progressPct').textContent = p.percent + '%';
+    document.getElementById('progressDone').textContent = p.progress;
+    document.getElementById('progressTotal').textContent = p.total;
+    document.getElementById('progressCurrent').textContent = p.current_ticker || '';
+    document.getElementById('scanStatus').textContent = running ? `Scanning... ${p.progress}/${p.total}` : '';
+
+    const rRes = await apiFetch(`/api/scan/${activeJobId}/results`);
+    if (rRes) { allResults = await rRes.json(); renderTable(); updateStats(); }
+
+    if (!running) {
+      clearInterval(pollInterval); pollInterval = null;
+      document.getElementById('progressSection').classList.remove('visible');
+      document.getElementById('cancelBtn').style.display = 'none';
+      _setScanBtns(false);
+      document.getElementById('lastScanTime').textContent = 'Last scan: ' + new Date().toLocaleTimeString();
+      document.getElementById('scanStatus').textContent = '';
+      const label = p.status === 'cancelled' ? 'Scan cancelled'
+        : p.status === 'failed' ? `Scan failed: ${p.error_message || 'unknown'}`
+        : `Scan complete — ${allResults.length} tickers evaluated`;
+      toast(label);
+    }
+  } catch(e) { console.error('Poll error:', e); }
+}
+
+// ── EVALUATE SINGLE ─────────────────────────────────────────────
+async function evaluateTicker() {
+  const input = document.getElementById('tickerInput');
+  const ticker = input.value.trim().toUpperCase();
+  if (!ticker) return;
+  const btn = document.getElementById('evaluateBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  try {
+    const res = await apiFetch('/api/evaluate', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ticker})
+    });
+    if (!res) return;
+    if (!res.ok) { const e = await res.json(); toast(e.detail || 'Error', 'error'); return; }
+    const result = await res.json();
+    const idx = allResults.findIndex(r => r.ticker === result.ticker);
+    if (idx >= 0) allResults[idx] = result; else allResults.unshift(result);
+    renderTable(); updateStats(); openDetail(result); input.value = '';
+  } finally { btn.disabled = false; btn.textContent = 'Evaluate'; }
+}
+
+// ── FILTER / SORT ───────────────────────────────────────────────
+function setFilter(filter) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  const map = {all:'statAll',IDEAL_FIT:'statIdeal',TRADABLE:'statTradable',WATCHLIST_ONLY:'statWatchlist',AVOID:'statAvoid'};
+  document.getElementById(map[filter])?.classList.add('active');
+  renderTable();
+}
+
+function sortBy(key) {
+  if (sortKey === key) sortAsc = !sortAsc;
+  else { sortKey = key; sortAsc = (key === 'ticker' || key === 'company_name'); }
+  renderTable();
+}
+
+function getFilteredSorted() {
+  let rows = currentFilter === 'all' ? [...allResults] : allResults.filter(r => r.classification === currentFilter);
+  rows.sort((a, b) => {
+    let va, vb;
+    if (sortKey === 'adr') { va = a.supporting_metrics?.adr_20d_pct ?? 0; vb = b.supporting_metrics?.adr_20d_pct ?? 0; }
+    else if (sortKey === 'classification') { const o = {IDEAL_FIT:0,TRADABLE:1,WATCHLIST_ONLY:2,AVOID:3}; va = o[a.classification]??4; vb = o[b.classification]??4; }
+    else { va = a[sortKey] ?? ''; vb = b[sortKey] ?? ''; }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+  return rows;
+}
+
+// ── RENDER TABLE ────────────────────────────────────────────────
+function renderTable() {
+  const rows = getFilteredSorted();
+  const tbody = document.getElementById('resultsBody');
+  const empty = document.getElementById('emptyState');
+  empty.style.display = rows.length === 0 ? 'block' : 'none';
+  tbody.innerHTML = rows.map(r => buildRow(r)).join('');
+  tbody.querySelectorAll('tr').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const result = allResults.find(r => r.ticker === tr.dataset.ticker);
+      if (result) openDetail(result);
+    });
+  });
+  if (selectedTicker) {
+    const sel = tbody.querySelector(`tr[data-ticker="${selectedTicker}"]`);
+    if (sel) sel.classList.add('selected');
+  }
+}
+
+function buildRow(r) {
+  const cls = r.classification;
+  const grade = GRADE_LABEL[cls] || '?';
+  const pct = Math.min(100, r.final_score);
+  const price = r.current_price != null ? '$' + r.current_price.toFixed(2) : '—';
+  const mktcap = fmtCap(r.market_cap);
+  const adr = r.supporting_metrics?.adr_20d_pct;
+  const adrClass = adr >= 4 ? 'high' : adr >= 2 ? 'medium' : 'low';
+  const adrTxt = adr != null ? adr.toFixed(1) + '%' : '—';
+  const earningsDate = r.next_earnings_date;
+  const earnClass = earningsDate && daysUntil(earningsDate) <= 10 ? 'soon' : '';
+  return `<tr data-ticker="${r.ticker}" class="${r.ticker === selectedTicker ? 'selected' : ''}">
+    <td><span class="grade-badge ${cls}">${grade}</span></td>
+    <td class="ticker-cell">${r.ticker}</td>
+    <td class="company-cell" title="${r.company_name || ''}">${r.company_name || '—'}</td>
+    <td class="sector-cell">${r.sector || '—'}</td>
+    <td><div class="score-cell"><div class="score-num ${cls}">${r.final_score}</div><div class="score-bar-track"><div class="score-bar-fill ${cls}" style="width:${pct}%"></div></div></div></td>
+    <td class="price-cell">${price}</td>
+    <td class="mktcap-cell">${mktcap}</td>
+    <td class="adr-cell ${adrClass}">${adrTxt}</td>
+    <td class="earnings-cell ${earnClass}">${earningsDate || '—'}</td>
+  </tr>`;
+}
+
+// ── DETAIL PANEL ────────────────────────────────────────────────
+function openDetail(r) {
+  selectedTicker = r.ticker;
+  document.querySelectorAll('#resultsBody tr').forEach(tr => tr.classList.toggle('selected', tr.dataset.ticker === r.ticker));
+  const cls = r.classification;
+  const grade = GRADE_LABEL[cls] || '?';
+  document.getElementById('dTicker').textContent = r.ticker;
+  document.getElementById('dTicker').style.color = cls === 'IDEAL_FIT' ? 'var(--ideal)' : cls === 'TRADABLE' ? 'var(--tradable)' : cls === 'WATCHLIST_ONLY' ? 'var(--watchlist)' : 'var(--avoid)';
+  document.getElementById('dCompany').textContent = r.company_name || '';
+  document.getElementById('dMeta').textContent = [r.sector, r.industry].filter(Boolean).join(' / ') || '';
+  const scoreEl = document.getElementById('dScore');
+  scoreEl.textContent = r.final_score; scoreEl.className = 'detail-score-big ' + cls;
+  const gradeEl = document.getElementById('dGrade');
+  gradeEl.textContent = grade; gradeEl.className = 'detail-grade-big grade-badge ' + cls;
+  document.getElementById('dConfidence').textContent = r.confidence_score + '%';
+  document.getElementById('dBody').innerHTML = buildDetailBody(r);
+  document.getElementById('detailPanel').classList.add('open');
+}
+
+function closeDetail() {
+  selectedTicker = null;
+  document.getElementById('detailPanel').classList.remove('open');
+  document.querySelectorAll('#resultsBody tr').forEach(tr => tr.classList.remove('selected'));
+}
+
+function buildDetailBody(r) {
+  const bd = r.breakdown || {};
+  let html = '';
+  if (r.hard_reject_flag && r.hard_reject_reasons?.length) {
+    html += `<div class="hard-reject-box"><div class="hrt">Hard Rejection</div><ul>${r.hard_reject_reasons.map(x=>`<li>${x}</li>`).join('')}</ul></div>`;
+  }
+  if (r.summary_paragraph) {
+    html += `<div class="detail-section"><div class="detail-section-title">Summary</div><div class="summary-text">${r.summary_paragraph}</div></div>`;
+  }
+  if (r.fit_reasons?.length || r.concern_reasons?.length) {
+    html += `<div class="detail-section"><div class="detail-section-title">Analysis</div>`;
+    if (r.fit_reasons?.length) html += `<ul class="reason-list fit">${r.fit_reasons.map(x=>`<li>${x}</li>`).join('')}</ul>`;
+    if (r.concern_reasons?.length) html += `<ul class="reason-list concern" style="margin-top:${r.fit_reasons?.length?'8px':'0'}">${r.concern_reasons.map(x=>`<li>${x}</li>`).join('')}</ul>`;
+    html += `</div>`;
+  }
+  if (!r.hard_reject_flag) {
+    const bars = [
+      {label:'Technical Trend', val:bd.technical_trend_score, max:30},
+      {label:'Movement', val:bd.expansion_movement_score, max:20},
+      {label:'Liquidity', val:bd.liquidity_tradability_score, max:10},
+      {label:'Fundamentals', val:bd.fundamental_stability_score, max:20},
+      {label:'News / Events', val:bd.news_event_score, max:15},
+      {label:'Penalties', val:bd.penalties_total, max:0},
+    ];
+    html += `<div class="detail-section"><div class="detail-section-title">Score Breakdown</div>`;
+    bars.forEach(b => {
+      const isNeg = b.val < 0;
+      const pct = b.max > 0 ? Math.min(100,(b.val/b.max)*100) : Math.min(100, Math.abs(b.val)/25*100);
+      html += `<div class="breakdown-row"><div class="breakdown-label">${b.label}</div><div class="breakdown-track"><div class="breakdown-fill ${isNeg?'negative':''}" style="width:${pct}%"></div></div><div class="breakdown-score">${b.max>0?`${b.val}/${b.max}`:b.val}</div></div>`;
+    });
+    html += `</div>`;
+  }
+  const m = r.supporting_metrics || {};
+  const metrics = [
+    {label:'Price', val: r.current_price != null ? '$'+r.current_price.toFixed(2) : null},
+    {label:'Market Cap', val: fmtCap(r.market_cap)},
+    {label:'Avg $Vol/Day', val: r.avg_daily_dollar_volume_30d ? '$'+(r.avg_daily_dollar_volume_30d/1e6).toFixed(0)+'M' : null},
+    {label:'ADR(20)', val: m.adr_20d_pct != null ? m.adr_20d_pct.toFixed(1)+'%' : null},
+    {label:'52W High', val: m['52w_high'] != null ? '$'+m['52w_high'].toFixed(2) : null},
+    {label:'Next Earnings', val: r.next_earnings_date || null},
+    {label:'Confidence', val: r.confidence_score+'%'},
+  ].filter(x => x.val && x.val !== '—');
+  if (metrics.length) {
+    html += `<div class="detail-section"><div class="detail-section-title">Key Metrics</div><div class="metrics-grid">${metrics.map(x=>`<div class="metric-item"><div class="metric-label">${x.label}</div><div class="metric-value">${x.val}</div></div>`).join('')}</div></div>`;
+  }
+  if (bd.penalty_items?.length) {
+    html += `<div class="detail-section"><div class="detail-section-title">Penalties</div>${bd.penalty_items.map(p=>`<div class="penalty-item"><div class="penalty-reason">${p.reason}</div><div class="penalty-pts">${p.points}</div></div>`).join('')}</div>`;
+  }
+  if (r.key_earnings_flags?.length) {
+    html += `<div class="detail-section"><div class="detail-section-title">Earnings Context</div>${r.key_earnings_flags.map(f=>`<div class="flag-item">${f}</div>`).join('')}</div>`;
+  }
+  if (r.key_news_flags?.length) {
+    html += `<div class="detail-section"><div class="detail-section-title">News Flags</div>${r.key_news_flags.map(f=>`<div class="flag-item">${f}</div>`).join('')}</div>`;
+  }
+  if (r.low_confidence_warning) {
+    html += `<div style="margin-top:12px;padding:10px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:6px;color:var(--watchlist);font-size:11px;">Low-confidence evaluation — some data was unavailable.</div>`;
+  }
+  return html;
+}
+
+// ── STATS ────────────────────────────────────────────────────────
+function updateStats() {
+  const c = {IDEAL_FIT:0,TRADABLE:0,WATCHLIST_ONLY:0,AVOID:0};
+  allResults.forEach(r => { if (c[r.classification] !== undefined) c[r.classification]++; });
+  document.getElementById('countAll').textContent = allResults.length;
+  document.getElementById('countIdeal').textContent = c.IDEAL_FIT;
+  document.getElementById('countTradable').textContent = c.TRADABLE;
+  document.getElementById('countWatchlist').textContent = c.WATCHLIST_ONLY;
+  document.getElementById('countAvoid').textContent = c.AVOID;
+}
+
+// ── HELPERS ──────────────────────────────────────────────────────
+function fmtCap(v) {
+  if (v == null) return '—';
+  if (v >= 1e12) return '$'+(v/1e12).toFixed(1)+'T';
+  if (v >= 1e9)  return '$'+(v/1e9).toFixed(1)+'B';
+  if (v >= 1e6)  return '$'+(v/1e6).toFixed(0)+'M';
+  return '$'+v;
+}
+function daysUntil(d) { if (!d) return 999; return Math.round((new Date(d)-new Date())/86400000); }
+
+// ── INIT ─────────────────────────────────────────────────────────
+async function checkExistingState() {
+  try {
+    const res = await apiFetch('/api/scans?limit=5');
+    if (!res || !res.ok) return;
+    const jobs = await res.json();
+    if (!jobs || !jobs.length) return;
+    const latest = jobs[0];
+    if (latest.status === 'running' || latest.status === 'pending') {
+      activeJobId = latest.id;
+      document.getElementById('progressSection').classList.add('visible');
+      document.getElementById('cancelBtn').style.display = 'inline-flex';
+      _setScanBtns(true);
+      document.getElementById('progressUniverse').textContent = _UNIVERSE_LABELS[latest.universe] || latest.universe;
+      pollInterval = setInterval(pollProgress, 2000);
+    } else if (latest.status === 'completed' && latest.id) {
+      activeJobId = latest.id;
+      const rRes = await apiFetch(`/api/scan/${latest.id}/results`);
+      if (rRes) { allResults = await rRes.json(); renderTable(); updateStats(); }
+      if (latest.completed_at) document.getElementById('lastScanTime').textContent = 'Last scan: ' + new Date(latest.completed_at).toLocaleTimeString();
+    }
+  } catch(e) {}
+}
+
+// Handle ?universe= query param for quick-launch from dashboard
+const urlParams = new URLSearchParams(window.location.search);
+const autoUniverse = urlParams.get('universe');
+
+checkExistingState().then(() => {
+  if (autoUniverse && ['sp500','sp500_extended','nasdaq_full','nyse_nasdaq_full'].includes(autoUniverse)) {
+    startScan(autoUniverse);
+  }
+});
+</script>
+{% endblock %}

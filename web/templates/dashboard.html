@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — Stock Fitness Agent{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_sub %}Welcome back, {{ current_user.username }}{% endblock %}
+
+{% block topbar_right %}
+<a href="/scanner" class="btn btn-primary btn-sm">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  Run Scan
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-content">
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card neutral">
+      <div class="kpi-label">Total Scans</div>
+      <div class="kpi-value">{{ stats.total_scans }}</div>
+      <div class="kpi-sub">Completed scans in history</div>
+    </div>
+    <div class="kpi-card ideal">
+      <div class="kpi-label">Ideal Fit</div>
+      <div class="kpi-value">{{ stats.classification_counts.IDEAL_FIT }}</div>
+      <div class="kpi-sub">From latest scan</div>
+    </div>
+    <div class="kpi-card tradable">
+      <div class="kpi-label">Tradable</div>
+      <div class="kpi-value">{{ stats.classification_counts.TRADABLE }}</div>
+      <div class="kpi-sub">From latest scan</div>
+    </div>
+    <div class="kpi-card watchlist">
+      <div class="kpi-label">Watchlist</div>
+      <div class="kpi-value">{{ stats.classification_counts.WATCHLIST_ONLY }}</div>
+      <div class="kpi-sub">From latest scan</div>
+    </div>
+  </div>
+
+  {% if not stats.latest_job %}
+  <!-- No scans yet -->
+  <div class="card">
+    <div class="empty-state" style="padding: 64px 24px;">
+      <div class="icon">📊</div>
+      <h3>No scans yet</h3>
+      <p>Run your first scan to start evaluating stocks for your trading style. Results will appear here once complete.</p>
+      <a href="/scanner" class="btn btn-primary">Go to Scanner</a>
+    </div>
+  </div>
+
+  {% else %}
+
+  <div class="dash-grid">
+
+    <!-- Top Picks from latest scan -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Top Picks — Latest Scan</div>
+          <div class="card-sub">
+            {{ stats.latest_job.universe | replace('_', ' ') | title }} ·
+            {% if stats.latest_job.completed_at %}
+              {{ stats.latest_job.completed_at[:10] }}
+            {% endif %}
+          </div>
+        </div>
+        <a href="/scanner" class="btn btn-sm">View all</a>
+      </div>
+      <div class="card-body" style="padding: 12px 20px;">
+        {% if stats.top_results %}
+        <div class="picks-table">
+          {% for r in stats.top_results %}
+          <div class="picks-row">
+            <div class="pick-rank">{{ loop.index }}</div>
+            <div class="pick-ticker">{{ r.ticker }}</div>
+            <div class="pick-name">{{ r.company_name or '—' }}</div>
+            <div class="pick-score {{ r.classification }}">{{ r.final_score }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 32px 0;">
+          <p>No Tradable or Ideal Fit results in latest scan.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Latest Scan Stats -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Latest Scan Summary</div>
+      </div>
+      <div class="card-body">
+        <div style="margin-bottom: 20px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <span style="font-size:13px;color:var(--text-muted);">Universe</span>
+            <span style="font-size:13px;font-weight:600;color:var(--text);">
+              {{ stats.latest_job.universe | replace('_', ' ') | title }}
+            </span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <span style="font-size:13px;color:var(--text-muted);">Tickers Evaluated</span>
+            <span style="font-size:13px;font-weight:600;color:var(--text);">
+              {{ stats.latest_job.total_tickers or stats.latest_job.processed_tickers }}
+            </span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <span style="font-size:13px;color:var(--text-muted);">Completed</span>
+            <span style="font-size:13px;color:var(--text-dim);">
+              {% if stats.latest_job.completed_at %}
+                {{ stats.latest_job.completed_at[:16] | replace('T',' ') }}
+              {% else %}—{% endif %}
+            </span>
+          </div>
+        </div>
+
+        <!-- Classification breakdown bars -->
+        {% set total = (stats.classification_counts.IDEAL_FIT + stats.classification_counts.TRADABLE + stats.classification_counts.WATCHLIST_ONLY + stats.classification_counts.AVOID) %}
+        {% if total > 0 %}
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Breakdown</div>
+        {% for cls, label, color in [
+            ('IDEAL_FIT', 'Ideal Fit', 'var(--ideal)'),
+            ('TRADABLE', 'Tradable', 'var(--tradable)'),
+            ('WATCHLIST_ONLY', 'Watchlist', 'var(--watchlist)'),
+            ('AVOID', 'Avoid', 'var(--avoid)')
+        ] %}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <div style="font-size:12px;color:var(--text-muted);min-width:70px;">{{ label }}</div>
+          <div style="flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;background:{{ color }};width:{{ ((stats.classification_counts[cls] / total) * 100) | round(1) }}%;"></div>
+          </div>
+          <div style="font-size:12px;color:{{ color }};font-weight:600;min-width:30px;text-align:right;">{{ stats.classification_counts[cls] }}</div>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Recent scans list -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Recent Scans</div>
+      </div>
+      <div class="card-body" style="padding: 0 20px;">
+        {% if recent_jobs %}
+        {% for job in recent_jobs %}
+        <div class="scan-item">
+          <span class="status-dot {{ job.status }}"></span>
+          <div>
+            <div class="scan-name">{{ job.universe | replace('_', ' ') | title }}</div>
+            <div class="scan-meta">
+              {% if job.status == 'completed' %}
+                {{ job.total_tickers }} tickers
+              {% elif job.status == 'running' %}
+                {{ job.processed_tickers }}/{{ job.total_tickers }} — {{ job.current_ticker }}
+              {% endif %}
+            </div>
+          </div>
+          <span class="scan-badge {{ job.status }}">{{ job.status }}</span>
+          <div class="scan-time">
+            {{ (job.completed_at or job.started_at or job.created_at or '')[:10] }}
+          </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state" style="padding: 24px 0;">
+          <p>No scan history yet.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Quick actions -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Quick Actions</div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:10px;">
+        <a href="/scanner?universe=sp500" class="btn" style="justify-content:flex-start;gap:10px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Scan S&amp;P 500
+        </a>
+        <a href="/scanner?universe=nasdaq_full" class="btn" style="justify-content:flex-start;gap:10px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          Scan Nasdaq Full
+        </a>
+        <a href="/scanner?universe=nyse_nasdaq_full" class="btn" style="justify-content:flex-start;gap:10px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          Scan NYSE + Nasdaq
+        </a>
+        <a href="/scanner" class="btn" style="justify-content:flex-start;gap:10px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Evaluate a specific ticker
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /dash-grid -->
+  {% endif %}
+
+</div>
+{% endblock %}
