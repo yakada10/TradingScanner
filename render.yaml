@@ -30,7 +30,7 @@
 databases:
   - name: stock-fitness-db
     databaseName: stock_fitness
-    plan: starter            # $7/mo — 1 GB, 97 connection limit
+    plan: basic-256mb        # Render's current entry plan (~$7/mo). Upgrade to basic-1gb ($20/mo) for more storage.
     region: oregon           # must match your services region
 
 # ── Services ─────────────────────────────────────────────────────────
@@ -44,6 +44,7 @@ services:
     plan: starter            # $7/mo — always-on, no spin-down on inactivity
     buildCommand: pip install -r requirements.txt
     startCommand: python -m uvicorn web.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
 
     # No disk needed — the web service only creates jobs and reads results from Postgres.
     # All heavy data fetching happens in the worker.
