@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Fitness Agent</title>
+<style>
+:root {
+  --bg:          #0d1117;
+  --surface:     #161b22;
+  --surface2:    #21262d;
+  --surface3:    #2d333b;
+  --border:      #30363d;
+  --text:        #e6edf3;
+  --text-muted:  #8b949e;
+  --text-dim:    #6e7681;
+  --ideal:       #3fb950;
+  --tradable:    #58a6ff;
+  --watchlist:   #d29922;
+  --avoid:       #f85149;
+  --accent:      #58a6ff;
+  --radius:      6px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  min-height: 100vh;
+}
+
+/* ── HEADER ── */
+.header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+}
+.header-title span { color: var(--accent); }
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.btn {
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn:hover { background: var(--surface3); border-color: #484f58; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.btn-primary:hover { background: #388bfd; border-color: #388bfd; }
+.btn-danger { background: #da3633; border-color: #da3633; color: #fff; }
+.btn-danger:hover { background: #f85149; border-color: #f85149; }
+
+.ticker-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg);
+}
+.ticker-input-wrap input {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 12px;
+  padding: 6px 10px;
+  outline: none;
+  width: 110px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  text-transform: uppercase;
+}
+.ticker-input-wrap input::placeholder { color: var(--text-dim); text-transform: none; }
+.ticker-input-wrap .btn {
+  border-radius: 0;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+#lastScanTime { color: var(--text-dim); }
+
+/* ── PROGRESS BAR ── */
+#progressSection {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 20px;
+  display: none;
+}
+.progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.progress-label { color: var(--text-muted); font-size: 11px; }
+.progress-label strong { color: var(--text); }
+.progress-pct { color: var(--accent); font-size: 11px; font-weight: 600; }
+.progress-track {
+  background: var(--surface3);
+  border-radius: 3px;
+  height: 4px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1f6feb, #58a6ff);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+  width: 0%;
+}
+
+/* ── STATS BAR ── */
+.stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.stat-card:hover, .stat-card.active { background: var(--surface3); border-color: #484f58; }
+.stat-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+.stat-dot.ideal    { background: var(--ideal); }
+.stat-dot.tradable { background: var(--tradable); }
+.stat-dot.watchlist{ background: var(--watchlist); }
+.stat-dot.avoid    { background: var(--avoid); }
+.stat-label { color: var(--text-muted); font-size: 11px; }
+.stat-count { color: var(--text); font-weight: 700; font-size: 13px; }
+.stat-card.active .stat-label { color: var(--text); }
+
+.stats-divider { width: 1px; height: 20px; background: var(--border); margin: 0 6px; }
+.stats-total { color: var(--text-muted); font-size: 11px; margin-left: 8px; }
+
+/* ── MAIN CONTENT ── */
+.main {
+  display: flex;
+  height: calc(100vh - 56px);
+  overflow: hidden;
+}
+
+/* ── TABLE PANEL ── */
+.table-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.table-container { min-width: 800px; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+thead th {
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+thead th:hover { color: var(--text); }
+thead th.sorted { color: var(--accent); }
+thead th .sort-icon { margin-left: 4px; opacity: 0.5; }
+thead th.sorted .sort-icon { opacity: 1; }
+
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+tbody tr:hover { background: var(--surface); }
+tbody tr.selected { background: #1c2128; }
+
+td {
+  padding: 9px 12px;
+  vertical-align: middle;
+}
+
+.ticker-cell {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+}
+.company-cell {
+  color: var(--text-muted);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sector-cell {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* Grade badge */
+.grade {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.grade.IDEAL_FIT    { background: rgba(63,185,80,0.15);  color: var(--ideal);    border: 1px solid rgba(63,185,80,0.3); }
+.grade.TRADABLE     { background: rgba(88,166,255,0.15); color: var(--tradable); border: 1px solid rgba(88,166,255,0.3); }
+.grade.WATCHLIST_ONLY { background: rgba(210,153,34,0.15); color: var(--watchlist); border: 1px solid rgba(210,153,34,0.3); }
+.grade.AVOID        { background: rgba(248,81,73,0.15);  color: var(--avoid);    border: 1px solid rgba(248,81,73,0.3); }
+
+/* Score bar */
+.score-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 90px;
+}
+.score-num {
+  font-weight: 700;
+  font-size: 13px;
+  min-width: 32px;
+  text-align: right;
+}
+.score-num.IDEAL_FIT    { color: var(--ideal); }
+.score-num.TRADABLE     { color: var(--tradable); }
+.score-num.WATCHLIST_ONLY { color: var(--watchlist); }
+.score-num.AVOID        { color: var(--avoid); }
+.score-bar-track {
+  flex: 1;
+  height: 4px;
+  background: var(--surface3);
+  border-radius: 2px;
+  overflow: hidden;
+  min-width: 50px;
+}
+.score-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+.score-bar-fill.IDEAL_FIT    { background: var(--ideal); }
+.score-bar-fill.TRADABLE     { background: var(--tradable); }
+.score-bar-fill.WATCHLIST_ONLY { background: var(--watchlist); }
+.score-bar-fill.AVOID        { background: var(--avoid); }
+
+.price-cell { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+.mktcap-cell { color: var(--text-muted); font-size: 12px; }
+.adr-cell {
+  font-weight: 600;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.adr-cell.high   { color: var(--ideal); }
+.adr-cell.medium { color: var(--watchlist); }
+.adr-cell.low    { color: var(--avoid); }
+
+.earnings-cell { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.earnings-cell.soon { color: var(--watchlist); }
+
+.reject-label {
+  display: inline-block;
+  background: rgba(248,81,73,0.1);
+  color: var(--avoid);
+  border: 1px solid rgba(248,81,73,0.2);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ── DETAIL PANEL ── */
+.detail-panel {
+  width: 420px;
+  min-width: 420px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  display: none;
+  flex-direction: column;
+}
+.detail-panel.open { display: flex; }
+
+.detail-header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 5;
+}
+.detail-close {
+  float: right;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+.detail-close:hover { color: var(--text); }
+.detail-ticker {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 22px;
+  font-weight: 800;
+}
+.detail-company { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.detail-meta { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+
+.detail-score-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.detail-score-big {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+}
+.detail-score-big.IDEAL_FIT    { color: var(--ideal); }
+.detail-score-big.TRADABLE     { color: var(--tradable); }
+.detail-score-big.WATCHLIST_ONLY { color: var(--watchlist); }
+.detail-score-big.AVOID        { color: var(--avoid); }
+.detail-score-label { color: var(--text-muted); font-size: 11px; }
+.detail-grade-big {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 16px;
+}
+.confidence-badge {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: right;
+}
+.confidence-badge span { display: block; font-size: 13px; color: var(--text-muted); font-weight: 600; }
+
+.detail-body { padding: 16px 20px; flex: 1; }
+
+.detail-section { margin-bottom: 20px; }
+.detail-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Summary */
+.summary-text {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  background: var(--surface2);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+}
+
+/* Score breakdown bars */
+.breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+.breakdown-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 110px;
+}
+.breakdown-track {
+  flex: 1;
+  height: 6px;
+  background: var(--surface3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.breakdown-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+.breakdown-fill.negative { background: var(--avoid); }
+.breakdown-score {
+  font-size: 11px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  min-width: 50px;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+/* Reasons */
+.reason-list { list-style: none; }
+.reason-list li {
+  padding: 5px 0 5px 16px;
+  position: relative;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  border-bottom: 1px solid rgba(48,54,61,0.5);
+}
+.reason-list li:last-child { border-bottom: none; }
+.reason-list.fit li::before {
+  content: '+';
+  position: absolute; left: 0;
+  color: var(--ideal);
+  font-weight: 700;
+}
+.reason-list.concern li::before {
+  content: '-';
+  position: absolute; left: 0;
+  color: var(--avoid);
+  font-weight: 700;
+}
+
+/* Metrics grid */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.metric-item {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+.metric-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+.metric-value { font-size: 13px; font-weight: 600; color: var(--text); margin-top: 2px; font-family: 'SF Mono', 'Fira Code', monospace; }
+
+/* Penalties */
+.penalty-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(48,54,61,0.5);
+  font-size: 12px;
+}
+.penalty-item:last-child { border-bottom: none; }
+.penalty-reason { color: var(--text-muted); flex: 1; }
+.penalty-pts { color: var(--avoid); font-weight: 600; font-family: 'SF Mono', 'Fira Code', monospace; white-space: nowrap; margin-left: 8px; }
+
+/* Flags */
+.flag-item {
+  padding: 4px 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  border-bottom: 1px solid rgba(48,54,61,0.5);
+}
+.flag-item:last-child { border-bottom: none; }
+.flag-item::before { content: '> '; color: var(--text-dim); }
+
+/* Hard reject */
+.hard-reject-box {
+  background: rgba(248,81,73,0.08);
+  border: 1px solid rgba(248,81,73,0.2);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 16px;
+}
+.hard-reject-box .title { color: var(--avoid); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.hard-reject-box li { color: var(--avoid); font-size: 12px; padding: 3px 0 3px 12px; position: relative; list-style: none; }
+.hard-reject-box li::before { content: 'X'; position: absolute; left: 0; font-size: 10px; }
+
+/* ── EMPTY / LOADING STATES ── */
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--text-dim);
+}
+.empty-state .icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
+.empty-state h3 { font-size: 15px; color: var(--text-muted); margin-bottom: 8px; }
+.empty-state p { font-size: 12px; line-height: 1.6; }
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Notification toast */
+#toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(60px);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 20px;
+  font-size: 12px;
+  color: var(--text);
+  transition: transform 0.3s;
+  z-index: 1000;
+  pointer-events: none;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #484f58; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-title">Stock <span>Fitness</span> Agent</div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="scanSP500Btn" onclick="startScan('sp500')">
+      S&amp;P 500
+    </button>
+    <button class="btn" id="scanNasdaqBtn" onclick="startScan('nasdaq_full')"
+            title="All Nasdaq-listed common stocks (~3,000+ tickers)">
+      Nasdaq Full
+    </button>
+    <button class="btn" id="scanFullBtn" onclick="startScan('nyse_nasdaq_full')"
+            title="Nasdaq + NYSE + AMEX common stocks (~4,500+ tickers — takes longer)">
+      NYSE + Nasdaq
+    </button>
+
+    <div class="ticker-input-wrap">
+      <input type="text" id="tickerInput" placeholder="Ticker (e.g. NVDA)"
+             onkeydown="if(event.key==='Enter') evaluateTicker()">
+      <button class="btn" id="evaluateBtn" onclick="evaluateTicker()">Evaluate</button>
+    </div>
+
+    <button class="btn btn-danger" id="cancelBtn" onclick="cancelScan()" style="display:none">
+      Cancel
+    </button>
+  </div>
+
+  <div class="header-right">
+    <span id="scanStatus"></span>
+    <span id="lastScanTime"></span>
+  </div>
+</div>
+
+<!-- PROGRESS -->
+<div id="progressSection">
+  <div class="progress-header">
+    <div class="progress-label">
+      Scanning <strong id="progressUniverse"></strong> &mdash;
+      <strong id="progressCurrent"></strong>
+      (<span id="progressDone">0</span> / <span id="progressTotal">0</span>)
+    </div>
+    <div class="progress-pct" id="progressPct">0%</div>
+  </div>
+  <div class="progress-track">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+</div>
+
+<!-- STATS BAR -->
+<div class="stats-bar">
+  <div class="stat-card active" id="statAll" onclick="setFilter('all')">
+    <div class="stat-label">All</div>
+    <div class="stat-count" id="countAll">0</div>
+  </div>
+  <div class="stats-divider"></div>
+  <div class="stat-card" id="statIdeal" onclick="setFilter('IDEAL_FIT')">
+    <div class="stat-dot ideal"></div>
+    <div class="stat-label">Ideal Fit</div>
+    <div class="stat-count" id="countIdeal">0</div>
+  </div>
+  <div class="stat-card" id="statTradable" onclick="setFilter('TRADABLE')">
+    <div class="stat-dot tradable"></div>
+    <div class="stat-label">Tradable</div>
+    <div class="stat-count" id="countTradable">0</div>
+  </div>
+  <div class="stat-card" id="statWatchlist" onclick="setFilter('WATCHLIST_ONLY')">
+    <div class="stat-dot watchlist"></div>
+    <div class="stat-label">Watchlist</div>
+    <div class="stat-count" id="countWatchlist">0</div>
+  </div>
+  <div class="stat-card" id="statAvoid" onclick="setFilter('AVOID')">
+    <div class="stat-dot avoid"></div>
+    <div class="stat-label">Avoid</div>
+    <div class="stat-count" id="countAvoid">0</div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- TABLE PANEL -->
+  <div class="table-panel" id="tablePanel">
+    <div class="table-container">
+      <table id="resultsTable">
+        <thead>
+          <tr>
+            <th onclick="sortBy('classification')">Grade <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('ticker')">Ticker <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('company_name')">Company <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('sector')">Sector <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('final_score')">Score <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('current_price')">Price <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('market_cap')">Mkt Cap <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('adr')">ADR% <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('next_earnings_date')">Earnings <span class="sort-icon">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody">
+        </tbody>
+      </table>
+
+      <div class="empty-state" id="emptyState">
+        <div class="icon">&#9650;</div>
+        <h3>No results yet</h3>
+        <p>Click <strong>Scan S&amp;P 500</strong> to evaluate the full universe,<br>
+           or type a ticker above and click <strong>Evaluate</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETAIL PANEL -->
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-header">
+      <button class="detail-close" onclick="closeDetail()">&#x2715;</button>
+      <div class="detail-ticker" id="dTicker">—</div>
+      <div class="detail-company" id="dCompany"></div>
+      <div class="detail-meta" id="dMeta"></div>
+      <div class="detail-score-row">
+        <div>
+          <div class="detail-score-big" id="dScore">—</div>
+          <div class="detail-score-label">/100 Overall Score</div>
+        </div>
+        <div class="detail-grade-big grade" id="dGrade">—</div>
+        <div class="confidence-badge">
+          Confidence<span id="dConfidence">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-body" id="dBody">
+      <!-- dynamically populated -->
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<div id="toast"></div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────
+let allResults = [];
+let currentFilter = 'all';
+let sortKey = 'final_score';
+let sortAsc = false;
+let selectedTicker = null;
+let pollInterval = null;
+
+const GRADE_LABEL = {
+  'IDEAL_FIT':     'A',
+  'TRADABLE':      'B',
+  'WATCHLIST_ONLY':'C',
+  'AVOID':         'D',
+};
+
+const CLASS_NAME = {
+  'IDEAL_FIT':     'Ideal Fit',
+  'TRADABLE':      'Tradable',
+  'WATCHLIST_ONLY':'Watchlist Only',
+  'AVOID':         'Avoid',
+};
+
+// ── SCAN ──────────────────────────────────────────────────────────
+const _UNIVERSE_LABELS = {
+  'sp500':           'S&P 500',
+  'sp500_extended':  'S&P 500 + Mid Cap',
+  'nasdaq_full':     'Nasdaq Full',
+  'nyse_nasdaq_full':'NYSE + Nasdaq',
+};
+const _SCAN_BTNS = ['scanSP500Btn','scanNasdaqBtn','scanFullBtn'];
+
+// Active job tracking
+let activeJobId = null;
+
+function _setScanBtns(disabled) {
+  _SCAN_BTNS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disabled;
+  });
+}
+
+async function startScan(universe) {
+  const res = await fetch('/api/scan', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({universe})
+  });
+  const data = await res.json();
+  if (data.error || data.detail) { toast(data.error || data.detail, 'error'); return; }
+
+  activeJobId = data.job_id;
+  allResults = [];
+  renderTable();
+  updateStats();
+
+  document.getElementById('progressSection').style.display = 'block';
+  document.getElementById('cancelBtn').style.display = 'inline-block';
+  _setScanBtns(true);
+  document.getElementById('progressUniverse').textContent = _UNIVERSE_LABELS[universe] || universe;
+  document.getElementById('progressTotal').textContent = '...';
+
+  pollInterval = setInterval(pollProgress, 2000);
+}
+
+async function cancelScan() {
+  if (!activeJobId) return;
+  await fetch(`/api/scan/${activeJobId}/cancel`, {method: 'POST'});
+  toast('Scan cancelled');
+}
+
+async function pollProgress() {
+  if (!activeJobId) return;
+  try {
+    const res = await fetch(`/api/scan/${activeJobId}/progress`);
+    if (!res.ok) return;
+    const p = await res.json();
+
+    const running = p.status === 'running' || p.status === 'pending';
+    document.getElementById('progressFill').style.width = p.percent + '%';
+    document.getElementById('progressPct').textContent = p.percent + '%';
+    document.getElementById('progressDone').textContent = p.progress;
+    document.getElementById('progressTotal').textContent = p.total;
+    document.getElementById('progressCurrent').textContent = p.current_ticker || '';
+    document.getElementById('scanStatus').textContent =
+      running ? `Scanning... ${p.progress}/${p.total}` : '';
+
+    // Fetch partial results every poll
+    const rRes = await fetch(`/api/scan/${activeJobId}/results`);
+    allResults = await rRes.json();
+    renderTable();
+    updateStats();
+
+    if (!running) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+      document.getElementById('progressSection').style.display = 'none';
+      document.getElementById('cancelBtn').style.display = 'none';
+      _setScanBtns(false);
+      const ts = new Date().toLocaleTimeString();
+      document.getElementById('lastScanTime').textContent = `Last scan: ${ts}`;
+      document.getElementById('scanStatus').textContent = '';
+      const label = p.status === 'cancelled'
+        ? 'Scan cancelled'
+        : p.status === 'failed'
+          ? `Scan failed: ${p.error_message || 'unknown error'}`
+          : `Scan complete — ${allResults.length} tickers evaluated`;
+      toast(label);
+    }
+  } catch(e) { console.error('Poll error:', e); }
+}
+
+// ── EVALUATE SINGLE ───────────────────────────────────────────────
+async function evaluateTicker() {
+  const input = document.getElementById('tickerInput');
+  const ticker = input.value.trim().toUpperCase();
+  if (!ticker) return;
+
+  const btn = document.getElementById('evaluateBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const res = await fetch('/api/evaluate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ticker})
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      toast(err.detail || 'Error evaluating ticker', 'error');
+      return;
+    }
+    const result = await res.json();
+
+    // Add or replace in allResults
+    const idx = allResults.findIndex(r => r.ticker === result.ticker);
+    if (idx >= 0) allResults[idx] = result;
+    else allResults.unshift(result);
+
+    renderTable();
+    updateStats();
+    openDetail(result);
+    input.value = '';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Evaluate';
+  }
+}
+
+// ── FILTER / SORT ─────────────────────────────────────────────────
+function setFilter(filter) {
+  currentFilter = filter;
+  ['All','Ideal','Tradable','Watchlist','Avoid'].forEach(n => {
+    document.getElementById('stat' + n)?.classList.remove('active');
+  });
+  const map = {all:'All', IDEAL_FIT:'Ideal', TRADABLE:'Tradable',
+               WATCHLIST_ONLY:'Watchlist', AVOID:'Avoid'};
+  document.getElementById('stat' + map[filter])?.classList.add('active');
+  renderTable();
+}
+
+function sortBy(key) {
+  if (sortKey === key) sortAsc = !sortAsc;
+  else { sortKey = key; sortAsc = key === 'ticker' || key === 'company_name'; }
+  document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
+  renderTable();
+}
+
+function getFilteredSorted() {
+  let rows = currentFilter === 'all'
+    ? [...allResults]
+    : allResults.filter(r => r.classification === currentFilter);
+
+  rows.sort((a, b) => {
+    let va, vb;
+    if (sortKey === 'adr') {
+      va = a.supporting_metrics?.adr_20d_pct ?? 0;
+      vb = b.supporting_metrics?.adr_20d_pct ?? 0;
+    } else if (sortKey === 'classification') {
+      const order = {IDEAL_FIT:0, TRADABLE:1, WATCHLIST_ONLY:2, AVOID:3};
+      va = order[a.classification] ?? 4;
+      vb = order[b.classification] ?? 4;
+    } else {
+      va = a[sortKey] ?? (typeof a[sortKey] === 'number' ? 0 : '');
+      vb = b[sortKey] ?? (typeof b[sortKey] === 'number' ? 0 : '');
+    }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+  return rows;
+}
+
+// ── RENDER TABLE ──────────────────────────────────────────────────
+function renderTable() {
+  const rows = getFilteredSorted();
+  const tbody = document.getElementById('resultsBody');
+  const empty = document.getElementById('emptyState');
+  empty.style.display = rows.length === 0 ? 'block' : 'none';
+
+  tbody.innerHTML = rows.map(r => buildRow(r)).join('');
+
+  // Re-attach row click
+  tbody.querySelectorAll('tr').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const ticker = tr.dataset.ticker;
+      const result = allResults.find(r => r.ticker === ticker);
+      if (result) openDetail(result);
+    });
+  });
+
+  // Highlight selected
+  if (selectedTicker) {
+    const sel = tbody.querySelector(`tr[data-ticker="${selectedTicker}"]`);
+    if (sel) sel.classList.add('selected');
+  }
+}
+
+function buildRow(r) {
+  const cls = r.classification;
+  const grade = GRADE_LABEL[cls] || '?';
+  const score = r.final_score;
+  const pct = Math.min(100, score);
+
+  const price = r.current_price != null ? '$' + r.current_price.toFixed(2) : '—';
+  const mktcap = fmtCap(r.market_cap);
+  const adr = r.supporting_metrics?.adr_20d_pct;
+  const adrClass = adr >= 4 ? 'high' : adr >= 2 ? 'medium' : 'low';
+  const adrTxt = adr != null ? adr.toFixed(1) + '%' : '—';
+
+  const earningsDate = r.next_earnings_date;
+  const earningsClass = earningsDate && daysUntil(earningsDate) <= 10 ? 'soon' : '';
+
+  return `<tr data-ticker="${r.ticker}" class="${r.ticker === selectedTicker ? 'selected' : ''}">
+    <td><span class="grade ${cls}">${grade}</span></td>
+    <td class="ticker-cell">${r.ticker}</td>
+    <td class="company-cell" title="${r.company_name || ''}">${r.company_name || '—'}</td>
+    <td class="sector-cell">${r.sector || '—'}</td>
+    <td>
+      <div class="score-cell">
+        <div class="score-num ${cls}">${score}</div>
+        <div class="score-bar-track">
+          <div class="score-bar-fill ${cls}" style="width:${pct}%"></div>
+        </div>
+      </div>
+    </td>
+    <td class="price-cell">${price}</td>
+    <td class="mktcap-cell">${mktcap}</td>
+    <td class="adr-cell ${adrClass}">${adrTxt}</td>
+    <td class="earnings-cell ${earningsClass}">${earningsDate || '—'}</td>
+  </tr>`;
+}
+
+// ── DETAIL PANEL ──────────────────────────────────────────────────
+function openDetail(r) {
+  selectedTicker = r.ticker;
+
+  // Update selected highlight in table
+  document.querySelectorAll('#resultsBody tr').forEach(tr => {
+    tr.classList.toggle('selected', tr.dataset.ticker === r.ticker);
+  });
+
+  const cls = r.classification;
+  const grade = GRADE_LABEL[cls] || '?';
+
+  document.getElementById('dTicker').textContent = r.ticker;
+  document.getElementById('dTicker').style.color =
+    cls === 'IDEAL_FIT' ? 'var(--ideal)' :
+    cls === 'TRADABLE'  ? 'var(--tradable)' :
+    cls === 'WATCHLIST_ONLY' ? 'var(--watchlist)' : 'var(--avoid)';
+  document.getElementById('dCompany').textContent = r.company_name || '';
+  document.getElementById('dMeta').textContent =
+    [r.sector, r.industry].filter(Boolean).join(' / ') || '';
+
+  const scoreEl = document.getElementById('dScore');
+  scoreEl.textContent = r.final_score;
+  scoreEl.className = 'detail-score-big ' + cls;
+
+  const gradeEl = document.getElementById('dGrade');
+  gradeEl.textContent = grade;
+  gradeEl.className = 'detail-grade-big grade ' + cls;
+
+  document.getElementById('dConfidence').textContent = r.confidence_score + '%';
+
+  document.getElementById('dBody').innerHTML = buildDetailBody(r);
+  document.getElementById('detailPanel').classList.add('open');
+}
+
+function closeDetail() {
+  selectedTicker = null;
+  document.getElementById('detailPanel').classList.remove('open');
+  document.querySelectorAll('#resultsBody tr').forEach(tr => tr.classList.remove('selected'));
+}
+
+function buildDetailBody(r) {
+  const bd = r.breakdown || {};
+  const cls = r.classification;
+  let html = '';
+
+  // Hard reject box
+  if (r.hard_reject_flag && r.hard_reject_reasons?.length) {
+    html += `<div class="hard-reject-box">
+      <div class="title">Hard Rejection</div>
+      <ul>${r.hard_reject_reasons.map(x => `<li>${x}</li>`).join('')}</ul>
+    </div>`;
+  }
+
+  // Summary
+  if (r.summary_paragraph) {
+    html += `<div class="detail-section">
+      <div class="detail-section-title">Summary</div>
+      <div class="summary-text">${r.summary_paragraph}</div>
+    </div>`;
+  }
+
+  // Why it fits / concerns — most useful section for Tradable stocks
+  const hasFit = r.fit_reasons?.length;
+  const hasConcern = r.concern_reasons?.length;
+  if (hasFit || hasConcern) {
+    html += `<div class="detail-section">
+      <div class="detail-section-title">Analysis</div>`;
+    if (hasFit) {
+      html += `<ul class="reason-list fit">
+        ${r.fit_reasons.map(x => `<li>${x}</li>`).join('')}
+      </ul>`;
+    }
+    if (hasConcern) {
+      html += `<ul class="reason-list concern" style="margin-top:${hasFit?8:0}px">
+        ${r.concern_reasons.map(x => `<li>${x}</li>`).join('')}
+      </ul>`;
+    }
+    html += `</div>`;
+  }
+
+  // Score breakdown
+  if (!r.hard_reject_flag) {
+    const bars = [
+      { label: 'Technical Trend',  val: bd.technical_trend_score,       max: 30 },
+      { label: 'Movement',         val: bd.expansion_movement_score,    max: 20 },
+      { label: 'Liquidity',        val: bd.liquidity_tradability_score, max: 10 },
+      { label: 'Fundamentals',     val: bd.fundamental_stability_score, max: 20 },
+      { label: 'News / Events',    val: bd.news_event_score,            max: 15 },
+      { label: 'Penalties',        val: bd.penalties_total,             max: 0  },
+    ];
+    html += `<div class="detail-section">
+      <div class="detail-section-title">Score Breakdown</div>`;
+    bars.forEach(b => {
+      const isNeg = b.val < 0;
+      const pct = b.max > 0 ? Math.min(100, (b.val / b.max) * 100) : Math.min(100, Math.abs(b.val) / 25 * 100);
+      const label = b.max > 0 ? `${b.val} / ${b.max}` : `${b.val}`;
+      html += `<div class="breakdown-row">
+        <div class="breakdown-label">${b.label}</div>
+        <div class="breakdown-track">
+          <div class="breakdown-fill ${isNeg ? 'negative' : ''}" style="width:${pct}%"></div>
+        </div>
+        <div class="breakdown-score">${label}</div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Key Metrics
+  const m = r.supporting_metrics || {};
+  const metrics = [
+    { label: 'Price',       val: r.current_price != null ? '$' + r.current_price.toFixed(2) : '—' },
+    { label: 'Market Cap',  val: fmtCap(r.market_cap) },
+    { label: 'Avg $Vol/Day', val: r.avg_daily_dollar_volume_30d ? '$' + (r.avg_daily_dollar_volume_30d/1e6).toFixed(0) + 'M' : '—' },
+    { label: 'ADR(20)',     val: m.adr_20d_pct != null ? m.adr_20d_pct.toFixed(1) + '%' : '—' },
+    { label: '52W High',    val: m['52w_high'] != null ? '$' + m['52w_high'].toFixed(2) : '—' },
+    { label: '52W Low',     val: m['52w_low'] != null ? '$' + m['52w_low'].toFixed(2) : '—' },
+    { label: 'Next Earnings', val: r.next_earnings_date || '—' },
+    { label: 'Confidence',  val: r.confidence_score + '%' },
+  ].filter(x => x.val !== '—');
+
+  if (metrics.length) {
+    html += `<div class="detail-section">
+      <div class="detail-section-title">Key Metrics</div>
+      <div class="metrics-grid">
+        ${metrics.map(x => `<div class="metric-item">
+          <div class="metric-label">${x.label}</div>
+          <div class="metric-value">${x.val}</div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // Penalties
+  if (bd.penalty_items?.length) {
+    html += `<div class="detail-section">
+      <div class="detail-section-title">Penalties Applied</div>
+      ${bd.penalty_items.map(p => `
+        <div class="penalty-item">
+          <div class="penalty-reason">${p.reason}</div>
+          <div class="penalty-pts">${p.points > 0 ? '+' : ''}${p.points}</div>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  // Earnings context
+  if (r.key_earnings_flags?.length) {
+    html += `<div class="detail-section">
+      <div class="detail-section-title">Earnings Context</div>
+      ${r.key_earnings_flags.map(f => `<div class="flag-item">${f}</div>`).join('')}
+    </div>`;
+  }
+
+  // News flags
+  if (r.key_news_flags?.length) {
+    html += `<div class="detail-section">
+      <div class="detail-section-title">News Flags</div>
+      ${r.key_news_flags.map(f => `<div class="flag-item">${f}</div>`).join('')}
+    </div>`;
+  }
+
+  if (r.low_confidence_warning) {
+    html += `<div style="margin-top:12px;padding:8px 10px;background:rgba(210,153,34,0.08);border:1px solid rgba(210,153,34,0.2);border-radius:4px;color:var(--watchlist);font-size:11px;">
+      Low-confidence evaluation — some data was unavailable or incomplete.
+    </div>`;
+  }
+
+  return html;
+}
+
+// ── STATS ────────────────────────────────────────────────────────
+function updateStats() {
+  const counts = {IDEAL_FIT:0, TRADABLE:0, WATCHLIST_ONLY:0, AVOID:0};
+  allResults.forEach(r => { if (counts[r.classification] !== undefined) counts[r.classification]++; });
+  document.getElementById('countAll').textContent = allResults.length;
+  document.getElementById('countIdeal').textContent = counts.IDEAL_FIT;
+  document.getElementById('countTradable').textContent = counts.TRADABLE;
+  document.getElementById('countWatchlist').textContent = counts.WATCHLIST_ONLY;
+  document.getElementById('countAvoid').textContent = counts.AVOID;
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────
+function fmtCap(v) {
+  if (v == null) return '—';
+  if (v >= 1e12) return '$' + (v/1e12).toFixed(1) + 'T';
+  if (v >= 1e9)  return '$' + (v/1e9).toFixed(1) + 'B';
+  if (v >= 1e6)  return '$' + (v/1e6).toFixed(0) + 'M';
+  return '$' + v;
+}
+
+function daysUntil(dateStr) {
+  if (!dateStr) return 999;
+  const d = new Date(dateStr);
+  const now = new Date();
+  return Math.round((d - now) / 86400000);
+}
+
+let toastTimer;
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.borderColor = type === 'error' ? 'rgba(248,81,73,0.4)' : 'var(--border)';
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+// ── INIT ─────────────────────────────────────────────────────────
+// On page load: check for running or recently completed scans in DB
+async function checkExistingState() {
+  try {
+    const res = await fetch('/api/scans?limit=5');
+    if (!res.ok) return;
+    const jobs = await res.json();
+    if (!jobs || !jobs.length) return;
+
+    const latest = jobs[0];
+
+    if (latest.status === 'running' || latest.status === 'pending') {
+      // Resume polling for this job
+      activeJobId = latest.id;
+      document.getElementById('progressSection').style.display = 'block';
+      document.getElementById('cancelBtn').style.display = 'inline-block';
+      _setScanBtns(true);
+      document.getElementById('progressUniverse').textContent =
+        _UNIVERSE_LABELS[latest.universe] || latest.universe;
+      pollInterval = setInterval(pollProgress, 2000);
+
+    } else if (latest.status === 'completed' && latest.id) {
+      // Load results of last completed scan
+      activeJobId = latest.id;
+      const rRes = await fetch(`/api/scan/${latest.id}/results`);
+      allResults = await rRes.json();
+      renderTable();
+      updateStats();
+      if (latest.completed_at) {
+        document.getElementById('lastScanTime').textContent =
+          'Last scan: ' + new Date(latest.completed_at).toLocaleTimeString();
+      }
+    }
+  } catch(e) {}
+}
+
+checkExistingState();
+</script>
+</body>
+</html>

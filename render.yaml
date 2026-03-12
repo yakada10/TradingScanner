@@ -1,0 +1,125 @@
+# render.yaml — Render.com deployment configuration
+# Docs: https://render.com/docs/render-yaml-spec
+#
+# Production architecture (two services + managed Postgres):
+#
+#   stock-fitness-web      Web service  — FastAPI, serves API + dashboard HTML
+#   stock-fitness-worker   Worker       — polls job queue, runs scans, writes results
+#   stock-fitness-db       Postgres     — shared job queue + persisted scan results
+#
+# The web service and worker share the same Postgres database.
+# The worker also gets a persistent disk for the yfinance price/fundamentals cache.
+#
+# Minimum cost estimate (Render paid plans):
+#   Web service:    $0 (free) or $7/mo (Starter — always-on, no spin-down)
+#   Worker service: $7/mo (Starter — background workers are paid-tier only)
+#   Postgres:       $7/mo (Starter — 1 GB)
+#   Worker disk:    $0.25/GB/mo (~$0.25 for 1 GB cache disk)
+#   ─────────────────────────────────────────────────────────
+#   Total:          ~$14–21/mo for a reliable always-on deployment
+#
+# IMPORTANT — env vars that must be set manually in the Render dashboard
+# (values marked sync: false below):
+#   FINNHUB_API_KEY   — optional, for richer news/earnings data
+#   FMP_API_KEY       — optional, for alternative fundamentals source
+#
+# DATABASE_URL is wired automatically via the `fromDatabase` reference —
+# you do NOT need to copy/paste it manually.
+
+# ── Managed Postgres database ─────────────────────────────────────────
+databases:
+  - name: stock-fitness-db
+    databaseName: stock_fitness
+    plan: starter            # $7/mo — 1 GB, 97 connection limit
+    region: oregon           # must match your services region
+
+# ── Services ─────────────────────────────────────────────────────────
+services:
+
+  # ── 1. Web service (API + dashboard) ───────────────────────────────
+  - type: web
+    name: stock-fitness-web
+    env: python
+    region: oregon
+    plan: starter            # $7/mo — always-on, no spin-down on inactivity
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn web.app:app --host 0.0.0.0 --port $PORT
+
+    # No disk needed — the web service only creates jobs and reads results from Postgres.
+    # All heavy data fetching happens in the worker.
+
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+
+      - key: LOG_LEVEL
+        value: INFO
+
+      # Web service does NOT run the worker inline.
+      # The scanner runs as a separate background worker process.
+      - key: RUN_WORKER_INLINE
+        value: "false"
+
+      # Wired automatically from the Postgres database defined above.
+      # Render substitutes the real connection string at deploy time.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stock-fitness-db
+          property: connectionString
+
+      # DATA_DIR: web service only needs this for the cache_dir config path.
+      # Since the web service doesn't fetch market data, set a safe temp path.
+      - key: DATA_DIR
+        value: /tmp/stock-fitness
+
+      # Set these in the Render dashboard — do not commit real values here.
+      - key: FINNHUB_API_KEY
+        sync: false
+
+      - key: FMP_API_KEY
+        sync: false
+
+  # ── 2. Background worker (scanner / job processor) ──────────────────
+  - type: worker
+    name: stock-fitness-worker
+    env: python
+    region: oregon
+    plan: starter            # $7/mo — background workers require a paid plan
+    buildCommand: pip install -r requirements.txt
+    startCommand: python worker/scanner_worker.py
+
+    # Persistent disk for yfinance price + fundamentals cache.
+    # Without this the worker re-fetches everything on each restart (correct but slow).
+    # With this, repeated scans are much faster since data is cached across restarts.
+    disk:
+      name: worker-cache
+      mountPath: /data
+      sizeGB: 1              # ~$0.25/mo
+
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+
+      - key: LOG_LEVEL
+        value: INFO
+
+      # Point the yfinance cache at the persistent disk
+      - key: DATA_DIR
+        value: /data
+
+      # How often the worker polls for new jobs (seconds)
+      - key: WORKER_POLL_INTERVAL
+        value: "5"
+
+      # Wired automatically from the same Postgres database
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stock-fitness-db
+          property: connectionString
+
+      # Set these in the Render dashboard — same values as the web service
+      - key: FINNHUB_API_KEY
+        sync: false
+
+      - key: FMP_API_KEY
+        sync: false

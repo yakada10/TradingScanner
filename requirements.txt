@@ -1,0 +1,32 @@
+# Stock Fitness Agent — Python dependencies
+# Install: pip install -r requirements.txt
+
+# ── Core data ────────────────────────────────────────────────────────
+yfinance>=0.2.40
+pandas>=2.0.0
+numpy>=1.24.0
+
+# ── HTTP / scraping ──────────────────────────────────────────────────
+requests>=2.31.0
+lxml>=4.9.0        # pd.read_html (Wikipedia + Nasdaq Trader)
+html5lib>=1.1      # fallback HTML parser
+
+# ── Web framework ────────────────────────────────────────────────────
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.0.0
+
+# ── Database ─────────────────────────────────────────────────────────
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0   # PostgreSQL driver (used in production)
+
+# ── Environment / config ─────────────────────────────────────────────
+python-dotenv>=1.0.0     # loads .env in local development
+
+# ── Optional: richer news and earnings data ──────────────────────────
+# Get a free key at https://finnhub.io — set FINNHUB_API_KEY env var
+finnhub-python>=2.4.19
+
+# ── Dev / testing ────────────────────────────────────────────────────
+pytest>=7.4.0
+pytest-cov>=4.1.0
