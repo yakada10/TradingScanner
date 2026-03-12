@@ -78,14 +78,16 @@ def login_required(request: Request) -> dict:
 
 
 def set_auth_cookie(response, token: str, is_prod: bool = False) -> None:
+    # No max_age = session cookie — expires when the browser is closed.
+    # User must sign in again each new browser session.
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=is_prod,       # HTTPS only in production
+        secure=is_prod,   # HTTPS only in production
         samesite="lax",
-        max_age=TOKEN_EXPIRE_DAYS * 86400,
         path="/",
+        # max_age intentionally omitted — session-only cookie
     )
 
 

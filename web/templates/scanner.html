@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Scanner — Stock Fitness Agent{% endblock %}
+{% block title %}Scanner — tradeUwU{% endblock %}
 {% block page_title %}Scanner{% endblock %}
 {% block page_sub %}<span id="scanStatus"></span>{% endblock %}
 
@@ -50,7 +50,7 @@
           <strong id="progressCurrent"></strong>
           (<span id="progressDone">0</span> / <span id="progressTotal">0</span>)
         </div>
-        <div class="progress-pct" id="progressPct">0%</div>
+        <div class="progress-pct" id="progressPct">0% &nbsp;<span id="progressEta" style="font-size:11px;color:var(--text-dim);font-weight:400;"></span></div>
       </div>
       <div class="progress-track">
         <div class="progress-fill" id="progressFill"></div>
@@ -189,9 +189,15 @@ async function pollProgress() {
     const p = await res.json();
     const running = p.status === 'running' || p.status === 'pending';
     document.getElementById('progressFill').style.width = p.percent + '%';
-    document.getElementById('progressPct').textContent = p.percent + '%';
+    document.getElementById('progressPct').childNodes[0].textContent = p.percent + '%';
     document.getElementById('progressDone').textContent = p.progress;
     document.getElementById('progressTotal').textContent = p.total;
+    // ETA display
+    const etaEl = document.getElementById('progressEta');
+    if (p.eta_seconds != null && p.eta_seconds > 0) {
+      const m = Math.floor(p.eta_seconds / 60), s = p.eta_seconds % 60;
+      etaEl.textContent = m > 0 ? `~${m}m ${s}s remaining` : `~${s}s remaining`;
+    } else { etaEl.textContent = ''; }
     document.getElementById('progressCurrent').textContent = p.current_ticker || '';
     document.getElementById('scanStatus').textContent = running ? `Scanning... ${p.progress}/${p.total}` : '';
 

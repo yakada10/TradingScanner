@@ -352,9 +352,24 @@ async def scan_progress(request: Request, job_id: str):
     job = db.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    total = job.get("total_tickers") or 0
+    from datetime import datetime, timezone as tz
+    total     = job.get("total_tickers") or 0
     processed = job.get("processed_tickers") or 0
-    pct = round(processed / total * 100, 1) if total > 0 else 0.0
+    pct       = round(processed / total * 100, 1) if total > 0 else 0.0
+
+    # Estimated time remaining
+    eta_seconds = None
+    if job.get("started_at") and processed > 0 and total > processed:
+        try:
+            started = datetime.fromisoformat(job["started_at"])
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=tz.utc)
+            elapsed = (datetime.now(tz.utc) - started).total_seconds()
+            rate = elapsed / processed          # seconds per ticker
+            eta_seconds = int(rate * (total - processed))
+        except Exception:
+            pass
+
     return {
         "job_id":         job_id,
         "universe":       job.get("universe"),
@@ -367,6 +382,7 @@ async def scan_progress(request: Request, job_id: str):
         "started_at":     job.get("started_at"),
         "completed_at":   job.get("completed_at"),
         "error_message":  job.get("error_message"),
+        "eta_seconds":    eta_seconds,
     }
 
 
