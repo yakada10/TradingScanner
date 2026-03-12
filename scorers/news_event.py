@@ -65,12 +65,12 @@ class NewsEventScorer:
         ns.earnings_quality = self._earnings_quality(earnings)
         ns.news_balance = self._event_news_score(news, event_risk)
         ns.filing_event_risk = self._filing_event_risk(event_risk, news)
-        ns.total = (
+        ns.total = min(12.0, (
             ns.earnings_proximity
             + ns.earnings_quality
             + ns.news_balance
             + ns.filing_event_risk
-        )
+        ))
         return ns
 
     # ------------------------------------------------------------------ #

@@ -56,10 +56,10 @@ class ReportGenerator:
         elif bd.technical.daily_structure < 2.5:
             concern.append("Weak or broken daily structure")
 
-        # Reversal / Recovery opportunity signals (new scorer)
-        if bd.reversal.total >= 7:
+        # Reversal / Recovery opportunity signals
+        if bd.reversal.total >= 6:
             fit.append("Strong reversal / recovery opportunity — early-stage turn in progress")
-        elif bd.reversal.total >= 4:
+        elif bd.reversal.total >= 3.5:
             fit.append("Reversal / recovery signals present — structure starting to improve")
         elif bd.reversal.total >= 2:
             fit.append("Modest reversal signals — watch for confirmation")
@@ -69,6 +69,30 @@ class ReportGenerator:
             fit.append("Clear higher lows forming on daily chart — ascending support")
         if bd.reversal.post_earnings_reaction >= 1.5:
             fit.append("Positive earnings reaction with sustained price follow-through")
+
+        # Setup Quality signals (new scorer)
+        stage = bd.setup.move_stage_label
+        stage_score = bd.setup.move_stage
+        if stage_score >= 4.5:
+            fit.append(f"Excellent setup timing — {stage} (highest-probability entry zone)")
+        elif stage_score >= 3.5:
+            fit.append(f"Good setup timing — {stage}")
+        elif stage_score >= 2.5:
+            fit.append(f"Acceptable setup timing — {stage}")
+        elif stage_score <= 1.0:
+            concern.append(f"Poor setup timing — {stage} (avoid or wait for better entry)")
+        if bd.setup.structure_quality >= 4.0:
+            fit.append("Highly organized price action — clean, tradable structure")
+        elif bd.setup.structure_quality >= 2.5:
+            fit.append("Reasonably clean structure — acceptable for entry")
+        elif bd.setup.structure_quality < 1.5:
+            concern.append("Choppy / sloppy price action — hard to trade cleanly")
+        if bd.setup.room_to_move >= 4.0:
+            fit.append("Clear room to expand — minimal near-term overhead resistance")
+        elif bd.setup.room_to_move >= 2.5:
+            fit.append("Adequate room to move — some overhead but manageable")
+        elif bd.setup.room_to_move < 1.5:
+            concern.append("Limited room to move — significant overhead resistance nearby")
 
         # Proximity to 52-week high
         if p and p.price_52w_high and p.current_price:
@@ -249,11 +273,12 @@ class ReportGenerator:
             )
             return
 
-        # Build narrative based on scores (calibrated for new scale: tech/22, move/28, rev/10, fund/15)
-        tech_q  = "strong"   if bd.technical.total   >= 16 else "moderate" if bd.technical.total   >= 10 else "weak"
-        move_q  = "high"     if bd.movement.total    >= 20 else "moderate" if bd.movement.total    >= 12 else "low"
-        rev_q   = "present"  if bd.reversal.total    >=  4 else "absent"
-        fund_q  = "solid"    if bd.fundamentals.total >= 11 else "acceptable" if bd.fundamentals.total >= 7 else "weak"
+        # Build narrative (calibrated for new scale: tech/20, move/22, rev/8, setup/15, fund/13, news/12)
+        tech_q  = "strong"   if bd.technical.total   >= 15 else "moderate" if bd.technical.total   >= 9 else "weak"
+        move_q  = "high"     if bd.movement.total    >= 16 else "moderate" if bd.movement.total    >= 10 else "low"
+        setup_q = bd.setup.move_stage_label if bd.setup.move_stage_label else "unclear"
+        rev_q   = "present"  if bd.reversal.total    >=  3.5 else "absent"
+        fund_q  = "solid"    if bd.fundamentals.total >= 10 else "acceptable" if bd.fundamentals.total >= 6 else "weak"
 
         price_str = f"${result.current_price:.2f}" if result.current_price else "N/A"
         mcap_str = f"${result.market_cap/1e9:.1f}B" if result.market_cap else "N/A"
@@ -270,6 +295,7 @@ class ReportGenerator:
             f"with a market cap of {mcap_str}. "
             f"Higher-timeframe technical structure is {tech_q}, "
             f"movement/expansion fitness is {move_q}, "
+            f"current move stage is '{setup_q}', "
             f"reversal/recovery opportunity is {rev_q}, "
             f"and fundamental stability is {fund_q}. "
             f"{penalty_note}"
@@ -302,12 +328,13 @@ class ReportGenerator:
                 lines.append(f"    [X] {r}")
         else:
             lines.append(f"  Score Breakdown:")
-            lines.append(f"    Technical Trend:      {bd.technical.total:5.1f} / 22")
-            lines.append(f"    Expansion/Movement:   {bd.movement.total:5.1f} / 28")
-            lines.append(f"    Reversal/Recovery:    {bd.reversal.total:5.1f} / 10")
+            lines.append(f"    Technical Trend:      {bd.technical.total:5.1f} / 20")
+            lines.append(f"    Expansion/Movement:   {bd.movement.total:5.1f} / 22")
+            lines.append(f"    Reversal/Recovery:    {bd.reversal.total:5.1f} /  8")
+            lines.append(f"    Setup Quality:        {bd.setup.total:5.1f} / 15  [{bd.setup.move_stage_label}]")
             lines.append(f"    Liquidity:            {bd.liquidity.total:5.1f} / 10")
-            lines.append(f"    Fundamentals:         {bd.fundamentals.total:5.1f} / 15")
-            lines.append(f"    News/Earnings/Events: {bd.news_event.total:5.1f} / 15")
+            lines.append(f"    Fundamentals:         {bd.fundamentals.total:5.1f} / 13")
+            lines.append(f"    News/Earnings/Events: {bd.news_event.total:5.1f} / 12")
             lines.append(f"    Penalties:            {bd.penalties.total:5.1f}")
             lines.append(f"    -------------------------------")
             lines.append(f"    Final Score:          {result.final_score:5.1f} / 100")

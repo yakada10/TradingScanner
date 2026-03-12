@@ -1,7 +1,7 @@
 """
-Technical Trend Fitness scorer — 22 points total.
+Technical Trend Fitness scorer — 20 points total.
   Monthly Structure:   6 pts  (was 10)
-  Weekly Structure:   10 pts  (was 12)
+  Weekly Structure:    8 pts  (was 10)
   Daily Structure:     6 pts  (was  8)
 
 Weight reduction rationale (for scalp / short-term trading style):
@@ -170,16 +170,17 @@ class TechnicalScorer:
 
     def _weekly(self, price: PriceData) -> float:
         """
-        Weekly structure sub-score (0–10 pts).
+        Weekly structure sub-score (0–8 pts).
 
-        Reduced from 12 pts to 10 pts.  The weekly is the primary
-        higher-timeframe confirmation for a scalp trader: it tells us
-        whether momentum is with us over a multi-week horizon.
+        Reduced from 10 pts to 8 pts.  The weekly is the key higher-timeframe
+        confirmation for a scalp trader.  Freed-up points fund the new Setup
+        Quality scorer (15 pts) which directly answers "is this actionable now?"
 
         Sub-components:
-          Price vs weekly MAs:            0–3.5 pts  (was 0–4)
-          Weekly HH/HL (last 16 weeks):   0–3.5 pts  (was 0–4)
-          Constructive base/continuation: 0–3.0 pts  (was 0–4)
+          Price vs weekly MAs:            0–3.5 pts
+          Weekly HH/HL (last 16 weeks):   0–3.5 pts
+          Constructive base/continuation: 0–3.0 pts
+        (total capped at 8)
         """
         score = 0.0
 
@@ -231,7 +232,7 @@ class TechnicalScorer:
                 elif pos_in_range >= 0.25:
                     score += 1.0
 
-        return min(10.0, score)
+        return min(8.0, score)
 
     # ------------------------------------------------------------------ #
     #  Daily Structure (0–6)

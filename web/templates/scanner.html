@@ -354,14 +354,20 @@ function buildDetailBody(r) {
   }
   if (!r.hard_reject_flag) {
     const bars = [
-      {label:'Technical Trend',     val:bd.technical_trend_score,       max:22},
-      {label:'Movement / Expansion',val:bd.expansion_movement_score,    max:28},
-      {label:'Reversal / Recovery', val:bd.reversal_recovery_score,     max:10},
+      {label:'Technical Trend',     val:bd.technical_trend_score,       max:20},
+      {label:'Movement / Expansion',val:bd.expansion_movement_score,    max:22},
+      {label:'Reversal / Recovery', val:bd.reversal_recovery_score,     max:8},
+      {label:'Setup Quality',       val:bd.setup_quality_score,         max:15},
       {label:'Liquidity',           val:bd.liquidity_tradability_score,  max:10},
-      {label:'Fundamentals',        val:bd.fundamental_stability_score,  max:15},
-      {label:'News / Events',       val:bd.news_event_score,             max:15},
+      {label:'Fundamentals',        val:bd.fundamental_stability_score,  max:13},
+      {label:'News / Events',       val:bd.news_event_score,             max:12},
       {label:'Penalties',           val:bd.penalties_total,              max:0},
     ];
+    // Show move stage label if available
+    const stageLabel = bd.sub_scores?.move_stage_label;
+    if (stageLabel && stageLabel !== 'Unknown') {
+      html += `<div class="detail-section"><div class="detail-section-title">Move Stage</div><div style="padding:6px 0;font-size:12px;color:var(--text-dim);">Current phase: <strong style="color:var(--text)">${stageLabel}</strong></div></div>`;
+    }
     html += `<div class="detail-section"><div class="detail-section-title">Score Breakdown</div>`;
     bars.forEach(b => {
       const isNeg = b.val < 0;

@@ -2,12 +2,13 @@
 Output models for scoring results and final classification.
 
 Score distribution (100 pts total):
-  Technical Trend Fitness       22 pts  (monthly 6 / weekly 10 / daily 6)
-  Expansion / Movement          28 pts  (ADR 10 / daily-exp 7 / weekly-exp 5 / vol-qual 6)
-  Reversal / Recovery           10 pts  (defended-lows 3 / higher-lows 3 / post-earnings 2 / weekly-rev 2)
+  Technical Trend Fitness       20 pts  (monthly 6 / weekly 8 / daily 6)
+  Expansion / Movement          22 pts  (ADR 8 / daily-exp 5 / weekly-exp 4 / vol-qual 5)
+  Reversal / Recovery            8 pts  (defended-lows 2.5 / higher-lows 2.5 / post-earnings 2 / weekly-rev 1)
+  Setup Quality                 15 pts  (move-stage 5 / structure-quality 5 / room-to-move 5)
   Liquidity / Tradability       10 pts
-  Fundamental Stability         15 pts  (revenue 4 / earnings 3 / balance-sheet 4 / durability 2 / capital 2)
-  News / Events                 15 pts
+  Fundamental Stability         13 pts  (capped; sub-scores sum to 15 internally)
+  News / Events                 12 pts  (capped; sub-scores sum to 15 internally)
   Penalties overlay           0 to -25 pts
 """
 from dataclasses import dataclass, field
@@ -25,19 +26,19 @@ class Classification(str, Enum):
 @dataclass
 class TechnicalScore:
     monthly_structure: float = 0.0    # 0-6
-    weekly_structure: float = 0.0     # 0-10
+    weekly_structure: float = 0.0     # 0-8
     daily_structure: float = 0.0      # 0-6
-    total: float = 0.0                # 0-22
+    total: float = 0.0                # 0-20
     notes: List[str] = field(default_factory=list)
 
 
 @dataclass
 class MovementScore:
-    atr_adr_relative: float = 0.0     # 0-10
-    daily_expansion: float = 0.0      # 0-7
-    weekly_expansion: float = 0.0     # 0-5
-    volatility_quality: float = 0.0   # 0-6
-    total: float = 0.0                # 0-28
+    atr_adr_relative: float = 0.0     # 0-8
+    daily_expansion: float = 0.0      # 0-5
+    weekly_expansion: float = 0.0     # 0-4
+    volatility_quality: float = 0.0   # 0-5
+    total: float = 0.0                # 0-22
     notes: List[str] = field(default_factory=list)
 
 
@@ -48,11 +49,27 @@ class ReversalScore:
     Detects early-stage turning points useful for scalp traders even when
     the longer-term chart is not yet fully repaired.
     """
-    defended_lows: float = 0.0          # 0-3  — rejection wicks / defended levels
-    higher_lows_forming: float = 0.0    # 0-3  — ascending low structure on daily
-    post_earnings_reaction: float = 0.0 # 0-2  — beat + held gains / followed through
-    weekly_reversal: float = 0.0        # 0-2  — weekly stabilization / reversal structure
-    total: float = 0.0                  # 0-10
+    defended_lows: float = 0.0          # 0-2.5 — rejection wicks / defended levels
+    higher_lows_forming: float = 0.0    # 0-2.5 — ascending low structure on daily
+    post_earnings_reaction: float = 0.0 # 0-2   — beat + held gains / followed through
+    weekly_reversal: float = 0.0        # 0-1   — weekly stabilization / reversal structure
+    total: float = 0.0                  # 0-8   (capped)
+    notes: List[str] = field(default_factory=list)
+
+
+@dataclass
+class SetupScore:
+    """
+    Setup Quality (0–15 pts).
+    Answers the key scalp-trader question: Is this stock actionable RIGHT NOW?
+    Evaluates move stage (early vs late vs exhausted), structure quality
+    (organized vs choppy), and room to move (clear space vs resistance wall).
+    """
+    move_stage: float = 0.0          # 0-5  — lifecycle position (early=best, exhausted=0)
+    structure_quality: float = 0.0   # 0-5  — clean/tradable vs choppy/sloppy
+    room_to_move: float = 0.0        # 0-5  — clear expansion space vs overhead resistance
+    total: float = 0.0               # 0-15
+    move_stage_label: str = ""       # human-readable stage label for display
     notes: List[str] = field(default_factory=list)
 
 
@@ -68,22 +85,22 @@ class LiquidityScore:
 
 @dataclass
 class FundamentalsScore:
-    revenue_trend: float = 0.0        # 0-4
-    earnings_trend: float = 0.0       # 0-3
-    balance_sheet: float = 0.0        # 0-4
-    business_durability: float = 0.0  # 0-2
-    capital_discipline: float = 0.0   # 0-2
-    total: float = 0.0                # 0-15
+    revenue_trend: float = 0.0        # 0-4  (internally)
+    earnings_trend: float = 0.0       # 0-3  (internally)
+    balance_sheet: float = 0.0        # 0-4  (internally)
+    business_durability: float = 0.0  # 0-2  (internally)
+    capital_discipline: float = 0.0   # 0-2  (internally)
+    total: float = 0.0                # 0-13 (capped from 15)
     notes: List[str] = field(default_factory=list)
 
 
 @dataclass
 class NewsEventScore:
-    earnings_proximity: float = 0.0   # 0-3
-    earnings_quality: float = 0.0     # 0-4
-    news_balance: float = 0.0         # 0-4
-    filing_event_risk: float = 0.0    # 0-4
-    total: float = 0.0                # 0-15
+    earnings_proximity: float = 0.0   # 0-3  (internally)
+    earnings_quality: float = 0.0     # 0-4  (internally)
+    news_balance: float = 0.0         # 0-4  (internally; was news_balance in old scorer)
+    filing_event_risk: float = 0.0    # 0-4  (internally)
+    total: float = 0.0                # 0-12 (capped from 15)
     notes: List[str] = field(default_factory=list)
 
 
@@ -106,6 +123,7 @@ class ScoreBreakdown:
     technical: TechnicalScore = field(default_factory=TechnicalScore)
     movement: MovementScore = field(default_factory=MovementScore)
     reversal: ReversalScore = field(default_factory=ReversalScore)
+    setup: SetupScore = field(default_factory=SetupScore)
     liquidity: LiquidityScore = field(default_factory=LiquidityScore)
     fundamentals: FundamentalsScore = field(default_factory=FundamentalsScore)
     news_event: NewsEventScore = field(default_factory=NewsEventScore)
@@ -117,6 +135,7 @@ class ScoreBreakdown:
             self.technical.total
             + self.movement.total
             + self.reversal.total
+            + self.setup.total
             + self.liquidity.total
             + self.fundamentals.total
             + self.news_event.total

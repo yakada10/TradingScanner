@@ -100,50 +100,84 @@ Without a Finnhub key the system still works using yfinance for all data.
 
 ## Score Breakdown (100 pts total)
 
-| Category                          | Weight | Notes                                               |
-|-----------------------------------|--------|-----------------------------------------------------|
-| **Technical Trend Fitness**       | 22 pts | Monthly 6 / Weekly 10 / Daily 6                     |
-| **Expansion / Movement**          | 28 pts | ADR 10 / Daily-exp 7 / Weekly-exp 5 / Vol-qual 6   |
-| **Reversal / Recovery**           | 10 pts | Defended-lows 3 / Higher-lows 3 / Post-earn 2 / Weekly-rev 2 |
-| **Liquidity / Tradability**       | 10 pts | Dollar vol / Share vol / Spread proxy               |
-| **Fundamental Stability**         | 15 pts | Revenue 4 / Earnings 3 / Balance sheet 4 / Durability 2 / Capital 2 |
-| **News / Earnings / Events**      | 15 pts | Earnings proximity / quality / news / filing risk   |
-| **Penalty Overlay**               | 0–−25  | Reverse split, dilution, offerings, legal, etc.     |
+| Category                          | Weight | Notes                                                      |
+|-----------------------------------|--------|------------------------------------------------------------|
+| **Technical Trend Fitness**       | 20 pts | Monthly 6 / Weekly 8 / Daily 6                             |
+| **Expansion / Movement**          | 22 pts | ADR 8 / Daily-exp 5 / Weekly-exp 4 / Vol-qual 5            |
+| **Reversal / Recovery**           |  8 pts | Defended-lows / Higher-lows / Post-earn / Weekly-rev       |
+| **Setup Quality**                 | 15 pts | Move-stage 5 / Structure-quality 5 / Room-to-move 5        |
+| **Liquidity / Tradability**       | 10 pts | Dollar vol / Share vol / Spread proxy / Market cap         |
+| **Fundamental Stability**         | 13 pts | Revenue / Earnings / Balance sheet / Durability / Capital  |
+| **News / Earnings / Events**      | 12 pts | Earnings proximity / quality / news balance / filing risk  |
+| **Penalty Overlay**               | 0–−25  | Reverse split, dilution, offerings, legal, etc.            |
 
 ### Weight Rationale
 
-**Movement/Expansion (28 pts) is the largest category** because for a scalp trader
-targeting 2–5% moves, a stock that can't deliver range simply can't be traded.
+**Setup Quality (15 pts, NEW)** is the key addition in this version. It answers
+the question "Is this actually tradable RIGHT NOW?" with three sub-signals:
+- **Move Stage** (0–5): Early reversal and re-acceleration score highest (5/4.5 pts).
+  Mature/exhausted moves score lowest. Chop scores 1 pt. Failed bounces = 0.
+- **Structure Quality** (0–5): Rewards shallow pullbacks, organized directional
+  candles, and multi-day momentum runs. Penalizes gap-and-fade, deep reversion,
+  and chaotic doji-heavy tape.
+- **Room to Move** (0–5): Rewards breakouts to new multi-week highs and clean
+  pullbacks with recovery space. Penalizes stocks boxing into overhead resistance
+  clusters or sitting far below prior highs with heavy supply overhead.
 
-**Reversal/Recovery (10 pts, new)** surfaces turning-point setups that the
-Technical scorer can't see yet — defended lows, higher lows forming, positive
-earnings reactions. This is what makes PATH-style stocks score correctly.
+**Movement/Expansion (22 pts)** remains the primary gating signal for raw range
+capacity — a stock needs ADR ≥2% to be worth scalping. Setup Quality then
+evaluates whether that movement is organized and timely.
 
-**Technical Trend (22 pts, reduced from 30)** still confirms multi-timeframe
-direction but no longer dominates. A monthly downtrend is less punishing if
-the weekly and daily are improving.
+**Reversal/Recovery (8 pts)** surfaces turning-point setups — defended lows,
+higher lows, positive earnings reactions — for stocks still repairing their charts.
 
-**Fundamentals (15 pts, reduced from 20)** ensures junk avoidance without
-over-rewarding slow "investment quality" companies at the expense of opportunity.
+**Technical Trend (20 pts)** confirms multi-timeframe direction context.
+
+**Fundamentals (13 pts) and News/Events (12 pts)** ensure junk avoidance while
+not over-rewarding slow "investment quality" stocks at the expense of opportunity.
 
 ---
 
 ## Movement / ADR Scoring
 
-The primary movement signal (ADR % of price):
+The primary movement gating signal (ADR % of price):
 
-| ADR Range | Score  | Assessment                            |
-|-----------|--------|---------------------------------------|
-| ≥ 6.0%    | 10 pts | Exceptional — very high opportunity   |
-| ≥ 4.0%    |  8 pts | Excellent movement for scalp style    |
-| ≥ 3.0%    |  6 pts | Good — can deliver 2–5% trades        |
-| ≥ 2.0%    |  4 pts | Moderate — workable, tighter targets  |
-| ≥ 1.5%    |  2 pts | Below-average — limited opportunity   |
-| < 1.5%    |  0 pts | Too slow for this style               |
+| ADR Range | Score   | Assessment                            |
+|-----------|---------|---------------------------------------|
+| ≥ 6.0%    | 8.0 pts | Exceptional — top tier opportunity    |
+| ≥ 4.0%    | 6.5 pts | Excellent movement for scalp style    |
+| ≥ 3.0%    | 5.0 pts | Good — can deliver 2–5% trades        |
+| ≥ 2.0%    | 3.0 pts | Moderate — workable, tighter targets  |
+| ≥ 1.5%    | 1.5 pts | Below-average — limited opportunity   |
+| < 1.5%    | 0.0 pts | Too slow for this style               |
 
 ---
 
-## Reversal / Recovery Scorer (New)
+## Setup Quality Scorer (New)
+
+| Sub-Score         | Max   | What it measures                                              |
+|-------------------|-------|---------------------------------------------------------------|
+| Move Stage        | 5 pts | Early reversal (5) / Re-accel (4.5) / Early-cont (4) / Mid (3) / Mature (2) / Chop (1) / Exhausted (0) |
+| Structure Quality | 5 pts | Shallow pullbacks, directional candles, multi-day runs; penalizes gap-fade |
+| Room to Move      | 5 pts | New highs = 3.5+, 10–18% pullback = 3, at resistance = lower |
+
+### Move Stage Classification
+
+| Stage Label                  | Score | Meaning for Scalp Trader                    |
+|------------------------------|-------|---------------------------------------------|
+| Early Reversal / Breakout    | 5.0   | Best timing — fresh turn from low           |
+| Re-Acceleration After Base   | 4.5   | Trend resumed — high-probability re-entry   |
+| Early Continuation           | 4.0   | Trend intact, not extended — good entry     |
+| Mid-Trend Continuation       | 3.0   | Solid but be selective — less room left     |
+| Basing / Consolidation       | 2.5   | Waiting phase — patience needed             |
+| Mature Continuation          | 2.0   | Later stage — reduced reward/risk ratio     |
+| Chop / Range                 | 1.0   | No direction — avoid without catalyst       |
+| Failed Bounce / Rolling Over | 0.0   | Wrong direction — skip                      |
+| Exhausted / Overextended     | 0.0   | High reversal risk — skip                   |
+
+---
+
+## Reversal / Recovery Scorer
 
 Detects early-stage turning points on stocks that may not have a clean monthly
 uptrend but show real near-term reversal signals:
@@ -198,12 +232,13 @@ stock_fitness_agent/
 │   └── event_risk.py         ← SEC EDGAR + news: structural risk flags
 │
 ├── scorers/
-│   ├── technical.py          ← Monthly/weekly/daily structure (22 pts)
-│   ├── movement.py           ← ATR/ADR, expansion behavior (28 pts)
-│   ├── reversal.py           ← Reversal/recovery opportunity (10 pts) [NEW]
+│   ├── technical.py          ← Monthly/weekly/daily structure (20 pts)
+│   ├── movement.py           ← ATR/ADR, expansion behavior (22 pts)
+│   ├── reversal.py           ← Reversal/recovery opportunity (8 pts)
+│   ├── setup.py              ← Setup quality: move stage + structure + room (15 pts) [NEW]
 │   ├── liquidity.py          ← Volume, dollar vol, market cap (10 pts)
-│   ├── fundamentals.py       ← Revenue, earnings, balance sheet (15 pts)
-│   ├── news_event.py         ← Earnings, news, filing risk (15 pts)
+│   ├── fundamentals.py       ← Revenue, earnings, balance sheet (13 pts)
+│   ├── news_event.py         ← Earnings, news, filing risk (12 pts)
 │   └── penalty.py            ← Penalty overlay (0 to −25)
 │
 └── engine/

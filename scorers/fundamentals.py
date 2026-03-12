@@ -71,10 +71,10 @@ class FundamentalsScorer:
         fs.balance_sheet = self._balance_sheet(balance_sheets)
         fs.business_durability = self._business_durability(reference, stmts)
         fs.capital_discipline = self._capital_discipline(balance_sheets, event_risk)
-        fs.total = (
+        fs.total = min(13.0, (
             fs.revenue_trend + fs.earnings_trend + fs.balance_sheet
             + fs.business_durability + fs.capital_discipline
-        )
+        ))
         return fs
 
     # ------------------------------------------------------------------ #

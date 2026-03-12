@@ -1,10 +1,11 @@
 """
-Reversal / Recovery Opportunity scorer — 10 points total.
+Reversal / Recovery Opportunity scorer — 8 points total (capped from 10).
 
-  Defended lows / rejection wicks:  3 pts
-  Higher lows forming:              3 pts
-  Post-earnings positive reaction:  2 pts
-  Weekly reversal structure:        2 pts
+  Defended lows / rejection wicks:  up to 3 pts  (contributes toward 8 cap)
+  Higher lows forming:              up to 3 pts
+  Post-earnings positive reaction:  up to 2 pts
+  Weekly reversal structure:        up to 2 pts
+  (sub-scores internally sum toward 10 but total is capped at 8)
 
 Design goal
 -----------
@@ -59,7 +60,7 @@ class ReversalScorer:
         rs.higher_lows_forming = self._higher_lows(price)
         rs.post_earnings_reaction = self._post_earnings(price, earnings)
         rs.weekly_reversal = self._weekly_reversal(price)
-        rs.total = min(10.0, (
+        rs.total = min(8.0, (
             rs.defended_lows
             + rs.higher_lows_forming
             + rs.post_earnings_reaction

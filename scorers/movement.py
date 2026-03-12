@@ -1,25 +1,22 @@
 """
-Expansion / Movement Fitness scorer — 28 points total.
-  ATR/ADR relative to price:     10 pts  (was  8)
-  Recent daily expansion:         7 pts  (was  5)
-  Weekly expansion capacity:      5 pts  (was  4)
-  Volatility quality:             6 pts  (was  3)
+Expansion / Movement Fitness scorer — 22 points total.
+  ATR/ADR relative to price:     8 pts  (was 10)
+  Recent daily expansion:        5 pts  (was  7)
+  Weekly expansion capacity:     4 pts  (was  5)
+  Volatility quality:            5 pts  (was  6)
 
-Weight increase rationale:
-  For a scalp trader targeting 2–5% moves, volatility and expansion
-  quality are the PRIMARY selection criteria.  A stock that cannot
-  deliver meaningful intraday/intraweek range is not useful regardless
-  of how clean its monthly chart looks.
+Weight adjustment rationale:
+  6 pts freed up here fund the new Setup Quality scorer (15 pts), which
+  captures the "is the movement actually usable?" dimension more precisely
+  via move-stage classification, structure quality, and room-to-move.
 
-  ADR/ATR weight increased to 10 pts with a new 6%+ top tier — extremely
-  active stocks now get properly rewarded.
+  ADR/ATR remains the primary gating signal (8 pts) since raw movement
+  capacity is the floor requirement for a scalp trade.  The Setup scorer
+  then evaluates whether that movement is organized and timely.
 
-  Volatility quality doubled (6 pts) because follow-through, impulse leg
-  consistency, and body/range ratio together predict whether a stock's
-  moves are tradable or just chaotic noise.
-
-  This scorer together with the Reversal scorer (10 pts) forms the
-  core "Trader Opportunity" dimension of the model.
+  Volatility quality (5 pts) still rewards stocks with follow-through,
+  impulse leg consistency, and directional candles — complementing the
+  Setup scorer's structure quality signal.
 """
 import logging
 from typing import Optional
@@ -62,16 +59,14 @@ class MovementScorer:
         Primary movement gating signal for a scalp trader.
 
         A stock that cannot move ≥2% daily on average simply cannot
-        deliver the 2–5% short-term profit targets reliably.  Stocks
-        with ≥6% ADR are exceptional trading candidates rewarded with
-        the full 10 pts.
+        deliver the 2–5% short-term profit targets reliably.
 
-        Score bands:
-          ≥ 6.0%   → 10.0 pts  (exceptional — very high opportunity)
-          ≥ 4.0%   →  8.0 pts  (excellent movement for short-term style)
-          ≥ 3.0%   →  6.0 pts  (good — can deliver 2–5% trades)
-          ≥ 2.0%   →  4.0 pts  (moderate — workable but tighter targets)
-          ≥ 1.5%   →  2.0 pts  (below-average — limited opportunity)
+        Score bands (8 pts max, was 10):
+          ≥ 6.0%   →  8.0 pts  (exceptional — top tier opportunity)
+          ≥ 4.0%   →  6.5 pts  (excellent movement for short-term style)
+          ≥ 3.0%   →  5.0 pts  (good — can deliver 2–5% trades)
+          ≥ 2.0%   →  3.0 pts  (moderate — workable but tighter targets)
+          ≥ 1.5%   →  1.5 pts  (below-average — limited opportunity)
           < 1.5%   →  0.0 pts  (too slow for scalp style)
         """
         pct = price.adr_20_pct
@@ -82,15 +77,15 @@ class MovementScorer:
             return 0.0
 
         if pct >= 6.0:
-            return 10.0
-        elif pct >= 4.0:
             return 8.0
+        elif pct >= 4.0:
+            return 6.5
         elif pct >= 3.0:
-            return 6.0
+            return 5.0
         elif pct >= 2.0:
-            return 4.0
+            return 3.0
         elif pct >= 1.5:
-            return 2.0
+            return 1.5
         else:
             return 0.0
 
@@ -108,13 +103,13 @@ class MovementScorer:
         More expansion days = the stock is actively making large directional
         moves = more opportunities for short-term scalpers.
 
-        Score bands (7 pts max, was 5 pts):
-          ≥ 5 expansion days → 7.0 pts
-          4 days             → 5.5 pts
-          3 days             → 4.5 pts
-          2 days             → 3.0 pts
-          1 day              → 2.0 pts
-          0 days             → 0.5 pts  (base — not completely dead)
+        Score bands (5 pts max, was 7 pts):
+          ≥ 5 expansion days → 5.0 pts
+          4 days             → 4.0 pts
+          3 days             → 3.0 pts
+          2 days             → 2.0 pts
+          1 day              → 1.0 pts
+          0 days             → 0.0 pts
         """
         if price.daily is None or len(price.daily) < 20:
             return 0.0
@@ -143,17 +138,17 @@ class MovementScorer:
                 expansion_days += 1
 
         if expansion_days >= 5:
-            return 7.0
+            return 5.0
         elif expansion_days == 4:
-            return 5.5
+            return 4.0
         elif expansion_days == 3:
-            return 4.5
-        elif expansion_days == 2:
             return 3.0
-        elif expansion_days == 1:
+        elif expansion_days == 2:
             return 2.0
+        elif expansion_days == 1:
+            return 1.0
         else:
-            return 0.5
+            return 0.0
 
     # ------------------------------------------------------------------ #
     #  Weekly expansion capacity (0–5)
@@ -168,11 +163,11 @@ class MovementScorer:
         critical for confirming that daily expansion is part of a sustained
         trend rather than isolated single-day noise.
 
-        Score bands (5 pts max, was 4 pts):
-          avg ≥ 4.0% OR strong-weeks ≥ 4 → 5.0 pts
-          avg ≥ 2.5% OR strong-weeks ≥ 2 → 4.0 pts
-          avg ≥ 1.5%                      → 2.5 pts
-          otherwise                       → 1.5 pts
+        Score bands (4 pts max, was 5 pts):
+          avg ≥ 4.0% OR strong-weeks ≥ 4 → 4.0 pts
+          avg ≥ 2.5% OR strong-weeks ≥ 2 → 3.0 pts
+          avg ≥ 1.5%                      → 2.0 pts
+          otherwise                       → 1.0 pt
         """
         if price.weekly is None or len(price.weekly) < 8:
             return 0.0
@@ -193,27 +188,25 @@ class MovementScorer:
         strong_weeks = int((weekly_moves.dropna() >= 3.0).sum())
 
         if avg_weekly_move_pct >= 4.0 or strong_weeks >= 4:
-            return 5.0
-        elif avg_weekly_move_pct >= 2.5 or strong_weeks >= 2:
             return 4.0
+        elif avg_weekly_move_pct >= 2.5 or strong_weeks >= 2:
+            return 3.0
         elif avg_weekly_move_pct >= 1.5:
-            return 2.5
+            return 2.0
         else:
-            return 1.5
+            return 1.0
 
     # ------------------------------------------------------------------ #
-    #  Volatility quality (0–6)
+    #  Volatility quality (0–5)
     #
-    #  Three sub-signals, each now worth 2 pts (doubled from 1 pt each):
+    #  Three sub-signals:
     #    1. Body/range ratio          (2 pts) — directional vs choppy candles
     #    2. Expansion follow-through  (2 pts) — do expansion days continue?
-    #    3. Impulse leg consistency   (2 pts) — clusters vs isolated spikes
+    #    3. Impulse leg consistency   (1 pt)  — clusters vs isolated spikes
     #
-    #  Rationale for doubling:
-    #    High ADR alone doesn't distinguish "clean 4-day impulse leg you can
-    #    ride" from "random two-sided whipsaw that stops you out."
-    #    Follow-through and consistency are what make a volatile stock
-    #    TRADABLE rather than just dangerous.
+    #  Note: the Setup scorer's Structure Quality sub-score also evaluates
+    #  candle organization and gap-and-fade behavior with complementary
+    #  logic.  Together they form a complete picture of movement usability.
     # ------------------------------------------------------------------ #
 
     def _volatility_quality(self, price: PriceData) -> float:
@@ -272,7 +265,7 @@ class MovementScorer:
                 elif ft_ratio >= 0.40:
                     score += 1.0
 
-        # --- Sub-signal 3: Impulse leg consistency (0–2 pts) ---
+        # --- Sub-signal 3: Impulse leg consistency (0–1 pt) ---
         if median_range > 0 and len(last_20) >= 4:
             day_ranges   = [float(last_20["High"].iloc[i] - last_20["Low"].iloc[i])
                             for i in range(len(last_20))]
@@ -286,10 +279,8 @@ class MovementScorer:
                 else:
                     i += 1
             if impulse_runs >= 3:
-                score += 2.0
-            elif impulse_runs >= 2:
-                score += 1.2
+                score += 1.0
             elif impulse_runs >= 1:
-                score += 0.6
+                score += 0.5
 
-        return min(6.0, score)
+        return min(5.0, score)
