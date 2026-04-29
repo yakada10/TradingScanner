@@ -49,6 +49,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from typing import Optional
 
 import db.database as db
 from web.auth import (
@@ -287,12 +288,33 @@ async def logout():
 #  Protected page routes
 # ─────────────────────────────────────────────────────────────────
 
+_EMPTY_ACCT = {
+    "trade_stats": {
+        "total_trades": 0, "total_pnl": 0.0, "today_pnl": 0.0,
+        "week_pnl": 0.0, "month_pnl": 0.0, "win_count": 0,
+        "loss_count": 0, "best_trade": 0.0, "worst_trade": 0.0,
+        "best_day": 0.0, "worst_day": 0.0, "trading_days": 0,
+        "avg_daily_pnl": 0.0, "avg_trade_pnl": 0.0, "recent_trades": [],
+    },
+    "withdrawal_totals": {
+        "total_gross": 0.0, "total_tax": 0.0, "total_penalty": 0.0,
+        "total_net": 0.0, "total_reserved": 0.0, "count": 0,
+    },
+    "active_accounts": 0,
+    "total_accounts": 0,
+}
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     current_user = _require_user(request)
     stats = db.get_dashboard_stats()
     recent_jobs = db.list_recent_jobs(limit=8)
-    acct_data = db.get_accounting_dashboard_data(current_user["id"])
+    try:
+        acct_data = db.get_accounting_dashboard_data(current_user["id"])
+    except Exception as exc:
+        log.error("Accounting dashboard data error: %s", exc, exc_info=True)
+        acct_data = _EMPTY_ACCT
     return templates.TemplateResponse("dashboard.html", {
         "request":      request,
         "current_user": current_user,
@@ -679,9 +701,9 @@ class TradeCreate(BaseModel):
     gross_pnl: float = 0.0
     fees: float = 0.0
     net_pnl: float = 0.0
-    quantity: float = None
-    entry_price: float = None
-    exit_price: float = None
+    quantity: Optional[float] = None
+    entry_price: Optional[float] = None
+    exit_price: Optional[float] = None
     strategy_tag: str = ""
     confidence_tag: str = ""
     notes: str = ""
