@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block title %}Trading Calendar — tradetuu{% endblock %}
+{% block page_title %}Trading Calendar{% endblock %}
+{% block page_sub %}Monthly P&amp;L heatmap — click a day to view trades{% endblock %}
+
+{% block content %}
+<div class="page-content">
+
+  <!-- Sub-nav -->
+  <div class="sub-nav">
+    <a href="/accountant/trades" class="sub-nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Trades
+    </a>
+    <a href="/accountant/calendar" class="sub-nav-link active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Calendar
+    </a>
+    <a href="/accountant/accounts" class="sub-nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      Accounts
+    </a>
+    <a href="/accountant/withdrawals" class="sub-nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Withdrawals
+    </a>
+  </div>
+
+  <!-- Controls -->
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+    <select class="form-select" id="calAccount" onchange="loadCalendar()" style="min-width:160px;">
+      <option value="">All Accounts</option>
+      {% for acct in accounts %}
+      <option value="{{ acct.id }}">{{ acct.name }}</option>
+      {% endfor %}
+    </select>
+    <div style="display:flex;align-items:center;gap:4px;">
+      <div class="cal-nav" style="margin-bottom:0;">
+        <button class="btn btn-sm btn-icon" onclick="changeMonth(-1)" aria-label="Previous month">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div class="cal-month-label" id="calMonthLabel">—</div>
+        <button class="btn btn-sm btn-icon" onclick="changeMonth(1)" aria-label="Next month">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </div>
+    <button class="btn btn-sm" onclick="goToday()">Today</button>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:12px;font-size:11px;color:var(--text-dim);">
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:rgba(34,197,94,0.35);border:1px solid rgba(34,197,94,0.5);display:inline-block;border-radius:2px;"></span>Profit</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:rgba(239,68,68,0.25);border:1px solid rgba(239,68,68,0.4);display:inline-block;border-radius:2px;"></span>Loss</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:var(--surface);border:1px solid var(--border2);display:inline-block;border-radius:2px;"></span>No trades</span>
+    </div>
+  </div>
+
+  <!-- Monthly summary row -->
+  <div id="calSummaryRow" style="display:none;margin-bottom:16px;">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;" id="calSummaryCards"></div>
+  </div>
+
+  <!-- Calendar card -->
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-body" style="padding:16px;">
+      <!-- Day of week headers -->
+      <div class="cal-grid" style="margin-bottom:4px;">
+        <div class="cal-dow">Sun</div>
+        <div class="cal-dow">Mon</div>
+        <div class="cal-dow">Tue</div>
+        <div class="cal-dow">Wed</div>
+        <div class="cal-dow">Thu</div>
+        <div class="cal-dow">Fri</div>
+        <div class="cal-dow">Sat</div>
+      </div>
+      <!-- Calendar grid -->
+      <div class="cal-grid" id="calGrid">
+        <div style="text-align:center;padding:40px;color:var(--text-dim);grid-column:1/-1;">
+          <span class="spinner"></span> Loading calendar…
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Day detail panel -->
+  <div class="cal-detail-panel" id="calDetailPanel">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div>
+        <div class="cal-detail-title" id="calDetailTitle">—</div>
+        <div class="cal-detail-sub" id="calDetailSub"></div>
+      </div>
+      <button class="btn btn-sm" onclick="closeDetail()">Close</button>
+    </div>
+    <div id="calDetailTrades"></div>
+  </div>
+
+</div><!-- /page-content -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+let curYear, curMonth, calData = {};
+
+function todayParts() {
+  const d = new Date();
+  return { y: d.getFullYear(), m: d.getMonth()+1, d: d.getDate() };
+}
+
+function goToday() {
+  const t = todayParts();
+  curYear = t.y; curMonth = t.m;
+  loadCalendar();
+}
+
+function changeMonth(delta) {
+  curMonth += delta;
+  if (curMonth > 12) { curMonth = 1; curYear++; }
+  if (curMonth < 1)  { curMonth = 12; curYear--; }
+  loadCalendar();
+}
+
+async function loadCalendar() {
+  closeDetail();
+  const acct = document.getElementById('calAccount').value;
+  let url = `/api/accountant/calendar?year=${curYear}&month=${curMonth}`;
+  if (acct) url += `&account_id=${acct}`;
+  document.getElementById('calGrid').innerHTML =
+    `<div style="text-align:center;padding:40px;color:var(--text-dim);grid-column:1/-1;"><span class="spinner"></span></div>`;
+
+  const res = await apiFetch(url);
+  if (!res) return;
+  const json = await res.json();
+  calData = json.days || {};
+  renderCalendar(curYear, curMonth);
+  renderSummary();
+}
+
+function renderCalendar(y, m) {
+  document.getElementById('calMonthLabel').textContent = `${MONTHS[m-1]} ${y}`;
+  const firstDow = new Date(y, m-1, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const today = todayParts();
+  const grid = document.getElementById('calGrid');
+  let html = '';
+
+  // Blank leading cells
+  for (let i=0; i<firstDow; i++) html += `<div class="cal-cell empty"></div>`;
+
+  for (let d=1; d<=daysInMonth; d++) {
+    const dateKey = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const info = calData[dateKey];
+    const isToday = (y===today.y && m===today.m && d===today.d);
+    let cls = 'cal-cell';
+    if (isToday) cls += ' today';
+    if (info) {
+      cls += ' has-trades';
+      if (info.pnl > 0)      cls += ' profit';
+      else if (info.pnl < 0) cls += ' loss';
+      else                   cls += ' flat';
+    }
+    const pnlHtml = info ? `
+      <div class="cal-pnl ${info.pnl>=0?'pos':'neg'}">${info.pnl>=0?'+':'-'}$${Math.abs(info.pnl).toLocaleString('en-US',{maximumFractionDigits:0})}</div>
+      <div class="cal-trade-count">${info.trade_count} trade${info.trade_count!==1?'s':''}</div>
+    ` : '';
+    html += `<div class="${cls}" onclick="showDay('${dateKey}', ${d})">
+      <div class="cal-day-num">${d}</div>
+      ${pnlHtml}
+    </div>`;
+  }
+  grid.innerHTML = html;
+}
+
+function renderSummary() {
+  const days = Object.values(calData);
+  if (days.length === 0) {
+    document.getElementById('calSummaryRow').style.display = 'none';
+    return;
+  }
+  const totalPnl    = days.reduce((s,d)=>s+d.pnl, 0);
+  const tradingDays = days.length;
+  const winDays     = days.filter(d=>d.pnl>0).length;
+  const lossDays    = days.filter(d=>d.pnl<0).length;
+  const totalTrades = days.reduce((s,d)=>s+d.trade_count, 0);
+
+  const cards = [
+    { label: 'Month P&L', value: fmtPnlColor(totalPnl), sub: `${tradingDays} trading days` },
+    { label: 'Win Days',  value: `<span style="color:var(--ideal);font-size:22px;font-weight:700;">${winDays}</span>`, sub: `${lossDays} loss days` },
+    { label: 'Total Trades', value: `<span style="font-size:22px;font-weight:700;">${totalTrades}</span>`, sub: `~${tradingDays>0?(totalTrades/tradingDays).toFixed(1):0}/day` },
+    { label: 'Avg Day',   value: fmtPnlColor(tradingDays ? totalPnl/tradingDays : 0), sub: 'Per trading day' },
+  ];
+
+  document.getElementById('calSummaryCards').innerHTML = cards.map(c => `
+    <div class="kpi-card neutral" style="padding:14px 16px;">
+      <div class="kpi-label">${c.label}</div>
+      <div style="margin:6px 0 4px;">${c.value}</div>
+      <div class="kpi-sub">${c.sub}</div>
+    </div>
+  `).join('');
+  document.getElementById('calSummaryRow').style.display = 'block';
+}
+
+function fmtPnlColor(v) {
+  const n = parseFloat(v)||0;
+  const abs = Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const col = n>0?'var(--ideal)':n<0?'var(--avoid)':'var(--text-muted)';
+  const sign = n>0?'+':'';
+  return `<span style="font-size:20px;font-weight:700;font-family:'SF Mono',monospace;color:${col};">${sign}$${abs}</span>`;
+}
+
+async function showDay(dateKey, dayNum) {
+  const info = calData[dateKey];
+  const panel = document.getElementById('calDetailPanel');
+  const dateLabel = new Date(dateKey+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  document.getElementById('calDetailTitle').textContent = dateLabel;
+
+  let sub = 'No trades on this day.';
+  if (info) sub = `${info.trade_count} trade${info.trade_count!==1?'s':''} · Net P&L: ${info.pnl>=0?'+':''}$${Math.abs(info.pnl).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  document.getElementById('calDetailSub').innerHTML = info ?
+    `<span style="color:${info.pnl>=0?'var(--ideal)':'var(--avoid)'};">${sub}</span>` :
+    `<span style="color:var(--text-dim);">${sub}</span>`;
+
+  // Fetch trades for this day
+  const acct = document.getElementById('calAccount').value;
+  let url = `/api/accountant/trades?date_from=${dateKey}&date_to=${dateKey}&limit=50`;
+  if (acct) url += `&account_id=${acct}`;
+
+  document.getElementById('calDetailTrades').innerHTML = '<span class="spinner"></span>';
+  panel.classList.add('open');
+  panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+
+  const res = await apiFetch(url);
+  if (!res) return;
+  const trades = await res.json();
+
+  if (!trades.length) {
+    document.getElementById('calDetailTrades').innerHTML =
+      '<p style="color:var(--text-dim);font-size:13px;">No trades on this day.</p>';
+    return;
+  }
+
+  let html = `<div class="acct-table-wrap"><table class="acct-table">
+    <thead><tr>
+      <th>Ticker</th><th>Account</th><th>Side</th>
+      <th>Gross P&L</th><th>Fees</th><th>Net P&L</th>
+      <th>Strategy</th><th>Notes</th>
+    </tr></thead><tbody>`;
+  for (const t of trades) {
+    const side = t.side ? `<span style="font-size:11px;padding:2px 5px;border-radius:3px;background:${t.side==='long'?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)'};color:${t.side==='long'?'var(--ideal)':'var(--avoid)'};">${t.side.toUpperCase()}</span>` : '—';
+    html += `<tr>
+      <td class="mono" style="font-weight:700;">${escHtml(t.ticker)}</td>
+      <td style="font-size:12px;color:var(--text-muted);">${escHtml(t.account_name||'—')}</td>
+      <td>${side}</td>
+      <td class="mono">${pnlSpan(t.gross_pnl)}</td>
+      <td class="mono" style="color:var(--text-muted);">${t.fees ? '$'+parseFloat(t.fees).toFixed(2) : '—'}</td>
+      <td class="mono">${pnlSpan(t.net_pnl)}</td>
+      <td style="font-size:11px;color:var(--text-dim);">${escHtml(t.strategy_tag||'—')}</td>
+      <td style="font-size:11px;color:var(--text-dim);max-width:160px;">${escHtml((t.notes||'').slice(0,60))}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  document.getElementById('calDetailTrades').innerHTML = html;
+}
+
+function closeDetail() {
+  document.getElementById('calDetailPanel').classList.remove('open');
+}
+
+function pnlSpan(v) {
+  const n = parseFloat(v)||0;
+  const abs = '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if (n>0) return `<span class="pnl-pos">+${abs}</span>`;
+  if (n<0) return `<span class="pnl-neg">-${abs}</span>`;
+  return `<span class="pnl-zero">$0.00</span>`;
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ────────────────────────────────────────────────────────
+const t = todayParts();
+curYear = t.y; curMonth = t.m;
+loadCalendar();
+</script>
+{% endblock %}

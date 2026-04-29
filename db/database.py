@@ -122,6 +122,8 @@ def _init_schema(engine: Engine) -> None:
         ))
         conn.commit()
     log.info("Database schema ready")
+    # Accounting tables (safe to call on every startup)
+    _init_accounting_schema(engine)
 
 
 # ------------------------------------------------------------------ #
@@ -460,6 +462,595 @@ def purge_old_jobs(keep_days: int = 30) -> int:
 
     log.info("Purged %d old scan job(s) older than %d days", len(old_ids), keep_days)
     return len(old_ids)
+
+
+# ================================================================== #
+#  ACCOUNTING — Schema Extension
+# ================================================================== #
+
+def _init_accounting_schema(engine: Engine) -> None:
+    """
+    Add trading_accounts, trades, and withdrawals tables if they don't exist.
+    Called from _init_schema() on each startup (safe to re-run).
+    """
+    is_pg = engine.dialect.name == "postgresql"
+    id_col = "id BIGSERIAL PRIMARY KEY" if is_pg else "id INTEGER PRIMARY KEY"
+
+    with engine.connect() as conn:
+        # ── Trading Accounts ────────────────────────────────────────────
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS trading_accounts (
+                {id_col},
+                user_id                  INTEGER NOT NULL,
+                name                     TEXT NOT NULL,
+                broker                   TEXT,
+                account_type             TEXT NOT NULL DEFAULT 'taxable',
+                is_active                INTEGER NOT NULL DEFAULT 1,
+                starting_balance         REAL DEFAULT 0,
+                default_tax_reserve_pct  REAL DEFAULT 30.0,
+                notes                    TEXT,
+                created_at               TEXT NOT NULL,
+                updated_at               TEXT NOT NULL
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_ta_user ON trading_accounts(user_id)"
+        ))
+
+        # ── Trades ──────────────────────────────────────────────────────
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS trades (
+                {id_col},
+                user_id        INTEGER NOT NULL,
+                account_id     INTEGER NOT NULL,
+                trade_date     TEXT NOT NULL,
+                ticker         TEXT NOT NULL,
+                side           TEXT,
+                gross_pnl      REAL NOT NULL DEFAULT 0,
+                fees           REAL DEFAULT 0,
+                net_pnl        REAL NOT NULL DEFAULT 0,
+                quantity       REAL,
+                entry_price    REAL,
+                exit_price     REAL,
+                strategy_tag   TEXT,
+                confidence_tag TEXT,
+                notes          TEXT,
+                screenshot_url TEXT,
+                created_at     TEXT NOT NULL,
+                updated_at     TEXT NOT NULL,
+                is_deleted     INTEGER NOT NULL DEFAULT 0
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_tr_user ON trades(user_id, trade_date)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_tr_acct ON trades(account_id, trade_date)"
+        ))
+
+        # ── Withdrawals / Distributions ─────────────────────────────────
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS withdrawals (
+                {id_col},
+                user_id                INTEGER NOT NULL,
+                account_id             INTEGER NOT NULL,
+                withdrawal_date        TEXT NOT NULL,
+                gross_amount           REAL NOT NULL DEFAULT 0,
+                tax_reserve_pct        REAL NOT NULL DEFAULT 0,
+                estimated_tax          REAL NOT NULL DEFAULT 0,
+                estimated_penalty      REAL NOT NULL DEFAULT 0,
+                net_to_owner           REAL NOT NULL DEFAULT 0,
+                retained_tax_reserve   REAL NOT NULL DEFAULT 0,
+                distribution_type      TEXT,
+                penalty_exception      INTEGER DEFAULT 0,
+                under_59_5             INTEGER DEFAULT 0,
+                qualified_distribution INTEGER DEFAULT 1,
+                notes                  TEXT,
+                created_at             TEXT NOT NULL,
+                updated_at             TEXT NOT NULL
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_wd_user ON withdrawals(user_id, withdrawal_date)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_wd_acct ON withdrawals(account_id)"
+        ))
+
+        conn.commit()
+
+
+# ------------------------------------------------------------------ #
+#  Accounting — Trading Accounts CRUD
+# ------------------------------------------------------------------ #
+
+def create_trading_account(
+    user_id: int, name: str, broker: Optional[str],
+    account_type: str, is_active: bool, starting_balance: float,
+    default_tax_reserve_pct: float, notes: Optional[str]
+) -> int:
+    now = _now()
+    with get_engine().connect() as conn:
+        conn.execute(text("""
+            INSERT INTO trading_accounts
+                (user_id, name, broker, account_type, is_active,
+                 starting_balance, default_tax_reserve_pct, notes,
+                 created_at, updated_at)
+            VALUES
+                (:uid, :name, :broker, :atype, :active,
+                 :bal, :reserve, :notes, :ts, :ts)
+        """), {
+            "uid": user_id, "name": name, "broker": broker or None,
+            "atype": account_type, "active": 1 if is_active else 0,
+            "bal": float(starting_balance or 0),
+            "reserve": float(default_tax_reserve_pct or 30.0),
+            "notes": notes or None, "ts": now,
+        })
+        conn.commit()
+        row = conn.execute(text(
+            "SELECT id FROM trading_accounts WHERE user_id=:uid ORDER BY id DESC LIMIT 1"
+        ), {"uid": user_id}).fetchone()
+        return row[0] if row else 0
+
+
+def get_trading_accounts(user_id: int, include_archived: bool = False) -> List[Dict]:
+    with get_engine().connect() as conn:
+        q = """
+            SELECT ta.*,
+                   COALESCE((SELECT COUNT(*) FROM trades t
+                              WHERE t.account_id=ta.id AND t.is_deleted=0), 0) AS trade_count,
+                   COALESCE((SELECT SUM(t.net_pnl) FROM trades t
+                              WHERE t.account_id=ta.id AND t.is_deleted=0), 0) AS total_pnl
+            FROM trading_accounts ta
+            WHERE ta.user_id=:uid
+        """
+        if not include_archived:
+            q += " AND ta.is_active >= 0"
+        q += " ORDER BY ta.created_at ASC"
+        rows = conn.execute(text(q), {"uid": user_id}).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_trading_account(account_id: int, user_id: int) -> Optional[Dict]:
+    with get_engine().connect() as conn:
+        row = conn.execute(text(
+            "SELECT * FROM trading_accounts WHERE id=:id AND user_id=:uid"
+        ), {"id": account_id, "uid": user_id}).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def update_trading_account(account_id: int, user_id: int, **kwargs) -> None:
+    allowed = {"name", "broker", "account_type", "is_active",
+               "starting_balance", "default_tax_reserve_pct", "notes"}
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return
+    updates["updated_at"] = _now()
+    sets = ", ".join(f"{k}=:{k}" for k in updates)
+    updates["id"] = account_id
+    updates["uid"] = user_id
+    with get_engine().connect() as conn:
+        conn.execute(text(
+            f"UPDATE trading_accounts SET {sets} WHERE id=:id AND user_id=:uid"
+        ), updates)
+        conn.commit()
+
+
+def archive_trading_account(account_id: int, user_id: int) -> None:
+    with get_engine().connect() as conn:
+        conn.execute(text(
+            "UPDATE trading_accounts SET is_active=-1, updated_at=:ts WHERE id=:id AND user_id=:uid"
+        ), {"ts": _now(), "id": account_id, "uid": user_id})
+        conn.commit()
+
+
+# ------------------------------------------------------------------ #
+#  Accounting — Trades CRUD
+# ------------------------------------------------------------------ #
+
+def create_trade(
+    user_id: int, account_id: int, trade_date: str, ticker: str,
+    side: Optional[str], gross_pnl: float, fees: float, net_pnl: float,
+    quantity: Optional[float], entry_price: Optional[float],
+    exit_price: Optional[float], strategy_tag: Optional[str],
+    confidence_tag: Optional[str], notes: Optional[str],
+    screenshot_url: Optional[str]
+) -> int:
+    now = _now()
+    with get_engine().connect() as conn:
+        conn.execute(text("""
+            INSERT INTO trades
+                (user_id, account_id, trade_date, ticker, side,
+                 gross_pnl, fees, net_pnl, quantity, entry_price,
+                 exit_price, strategy_tag, confidence_tag, notes,
+                 screenshot_url, created_at, updated_at, is_deleted)
+            VALUES
+                (:uid, :acct, :dt, :ticker, :side,
+                 :gross, :fees, :net, :qty, :entry,
+                 :exit_, :strat, :conf, :notes,
+                 :ss, :ts, :ts, 0)
+        """), {
+            "uid": user_id, "acct": account_id, "dt": trade_date,
+            "ticker": ticker.upper().strip(), "side": side or None,
+            "gross": float(gross_pnl or 0), "fees": float(fees or 0),
+            "net": float(net_pnl), "qty": quantity,
+            "entry": entry_price, "exit_": exit_price,
+            "strat": strategy_tag or None, "conf": confidence_tag or None,
+            "notes": notes or None, "ss": screenshot_url or None, "ts": now,
+        })
+        conn.commit()
+        row = conn.execute(text(
+            "SELECT id FROM trades WHERE user_id=:uid ORDER BY id DESC LIMIT 1"
+        ), {"uid": user_id}).fetchone()
+        return row[0] if row else 0
+
+
+def get_trades(
+    user_id: int, account_id: Optional[int] = None,
+    date_from: Optional[str] = None, date_to: Optional[str] = None,
+    ticker: Optional[str] = None, limit: int = 200, offset: int = 0
+) -> List[Dict]:
+    params: Dict[str, Any] = {"uid": user_id, "limit": limit, "offset": offset}
+    q = """
+        SELECT t.*, ta.name AS account_name, ta.account_type
+        FROM trades t
+        JOIN trading_accounts ta ON ta.id = t.account_id
+        WHERE t.user_id=:uid AND t.is_deleted=0
+    """
+    if account_id:
+        q += " AND t.account_id=:acct"
+        params["acct"] = account_id
+    if date_from:
+        q += " AND t.trade_date >= :df"
+        params["df"] = date_from
+    if date_to:
+        q += " AND t.trade_date <= :dt"
+        params["dt"] = date_to
+    if ticker:
+        q += " AND UPPER(t.ticker) LIKE :tk"
+        params["tk"] = f"%{ticker.upper()}%"
+    q += " ORDER BY t.trade_date DESC, t.id DESC LIMIT :limit OFFSET :offset"
+    with get_engine().connect() as conn:
+        rows = conn.execute(text(q), params).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_trade(trade_id: int, user_id: int) -> Optional[Dict]:
+    with get_engine().connect() as conn:
+        row = conn.execute(text(
+            "SELECT * FROM trades WHERE id=:id AND user_id=:uid AND is_deleted=0"
+        ), {"id": trade_id, "uid": user_id}).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def update_trade(trade_id: int, user_id: int, **kwargs) -> None:
+    allowed = {"account_id", "trade_date", "ticker", "side", "gross_pnl",
+               "fees", "net_pnl", "quantity", "entry_price", "exit_price",
+               "strategy_tag", "confidence_tag", "notes", "screenshot_url"}
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return
+    if "ticker" in updates and updates["ticker"]:
+        updates["ticker"] = updates["ticker"].upper().strip()
+    updates["updated_at"] = _now()
+    sets = ", ".join(f"{k}=:{k}" for k in updates)
+    updates["id"] = trade_id
+    updates["uid"] = user_id
+    with get_engine().connect() as conn:
+        conn.execute(text(
+            f"UPDATE trades SET {sets} WHERE id=:id AND user_id=:uid AND is_deleted=0"
+        ), updates)
+        conn.commit()
+
+
+def delete_trade(trade_id: int, user_id: int) -> None:
+    with get_engine().connect() as conn:
+        conn.execute(text(
+            "UPDATE trades SET is_deleted=1, updated_at=:ts WHERE id=:id AND user_id=:uid"
+        ), {"ts": _now(), "id": trade_id, "uid": user_id})
+        conn.commit()
+
+
+# ------------------------------------------------------------------ #
+#  Accounting — Withdrawals CRUD
+# ------------------------------------------------------------------ #
+
+def create_withdrawal(
+    user_id: int, account_id: int, withdrawal_date: str,
+    gross_amount: float, tax_reserve_pct: float, estimated_tax: float,
+    estimated_penalty: float, net_to_owner: float, retained_tax_reserve: float,
+    distribution_type: Optional[str], penalty_exception: bool,
+    under_59_5: bool, qualified_distribution: bool, notes: Optional[str]
+) -> int:
+    now = _now()
+    with get_engine().connect() as conn:
+        conn.execute(text("""
+            INSERT INTO withdrawals
+                (user_id, account_id, withdrawal_date, gross_amount,
+                 tax_reserve_pct, estimated_tax, estimated_penalty,
+                 net_to_owner, retained_tax_reserve, distribution_type,
+                 penalty_exception, under_59_5, qualified_distribution,
+                 notes, created_at, updated_at)
+            VALUES
+                (:uid, :acct, :dt, :gross,
+                 :res_pct, :est_tax, :est_pen,
+                 :net, :retained, :dtype,
+                 :pex, :u59, :qual,
+                 :notes, :ts, :ts)
+        """), {
+            "uid": user_id, "acct": account_id, "dt": withdrawal_date,
+            "gross": float(gross_amount), "res_pct": float(tax_reserve_pct),
+            "est_tax": float(estimated_tax), "est_pen": float(estimated_penalty),
+            "net": float(net_to_owner), "retained": float(retained_tax_reserve),
+            "dtype": distribution_type or None,
+            "pex": 1 if penalty_exception else 0,
+            "u59": 1 if under_59_5 else 0,
+            "qual": 1 if qualified_distribution else 0,
+            "notes": notes or None, "ts": now,
+        })
+        conn.commit()
+        row = conn.execute(text(
+            "SELECT id FROM withdrawals WHERE user_id=:uid ORDER BY id DESC LIMIT 1"
+        ), {"uid": user_id}).fetchone()
+        return row[0] if row else 0
+
+
+def get_withdrawals(
+    user_id: int, account_id: Optional[int] = None, limit: int = 100
+) -> List[Dict]:
+    params: Dict[str, Any] = {"uid": user_id, "limit": limit}
+    q = """
+        SELECT w.*, ta.name AS account_name, ta.account_type
+        FROM withdrawals w
+        JOIN trading_accounts ta ON ta.id = w.account_id
+        WHERE w.user_id=:uid
+    """
+    if account_id:
+        q += " AND w.account_id=:acct"
+        params["acct"] = account_id
+    q += " ORDER BY w.withdrawal_date DESC, w.id DESC LIMIT :limit"
+    with get_engine().connect() as conn:
+        rows = conn.execute(text(q), params).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_withdrawal(withdrawal_id: int, user_id: int) -> Optional[Dict]:
+    with get_engine().connect() as conn:
+        row = conn.execute(text(
+            "SELECT * FROM withdrawals WHERE id=:id AND user_id=:uid"
+        ), {"id": withdrawal_id, "uid": user_id}).mappings().fetchone()
+    return dict(row) if row else None
+
+
+def update_withdrawal(withdrawal_id: int, user_id: int, **kwargs) -> None:
+    allowed = {"account_id", "withdrawal_date", "gross_amount", "tax_reserve_pct",
+               "estimated_tax", "estimated_penalty", "net_to_owner",
+               "retained_tax_reserve", "distribution_type", "penalty_exception",
+               "under_59_5", "qualified_distribution", "notes"}
+    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    if not updates:
+        return
+    updates["updated_at"] = _now()
+    sets = ", ".join(f"{k}=:{k}" for k in updates)
+    updates["id"] = withdrawal_id
+    updates["uid"] = user_id
+    with get_engine().connect() as conn:
+        conn.execute(text(
+            f"UPDATE withdrawals SET {sets} WHERE id=:id AND user_id=:uid"
+        ), updates)
+        conn.commit()
+
+
+def delete_withdrawal(withdrawal_id: int, user_id: int) -> None:
+    with get_engine().connect() as conn:
+        conn.execute(text(
+            "DELETE FROM withdrawals WHERE id=:id AND user_id=:uid"
+        ), {"id": withdrawal_id, "uid": user_id})
+        conn.commit()
+
+
+# ------------------------------------------------------------------ #
+#  Accounting — Analytics / Summary
+# ------------------------------------------------------------------ #
+
+def get_trade_stats(user_id: int, account_id: Optional[int] = None) -> Dict:
+    """
+    Returns comprehensive trade statistics for a user (optionally per account).
+    """
+    from datetime import date, timedelta
+    today = date.today().isoformat()
+    week_start = (date.today() - timedelta(days=date.today().weekday())).isoformat()
+    month_start = date.today().replace(day=1).isoformat()
+
+    params: Dict[str, Any] = {"uid": user_id}
+    acct_filter = " AND account_id=:acct" if account_id else ""
+    if account_id:
+        params["acct"] = account_id
+
+    with get_engine().connect() as conn:
+        base = f"FROM trades WHERE user_id=:uid AND is_deleted=0{acct_filter}"
+
+        def scalar(sql, p=None):
+            r = conn.execute(text(sql), {**params, **(p or {})}).fetchone()
+            return (r[0] or 0) if r else 0
+
+        total_trades  = scalar(f"SELECT COUNT(*) {base}")
+        total_pnl     = scalar(f"SELECT COALESCE(SUM(net_pnl),0) {base}")
+        today_pnl     = scalar(f"SELECT COALESCE(SUM(net_pnl),0) {base} AND trade_date=:d", {"d": today})
+        week_pnl      = scalar(f"SELECT COALESCE(SUM(net_pnl),0) {base} AND trade_date>=:d", {"d": week_start})
+        month_pnl     = scalar(f"SELECT COALESCE(SUM(net_pnl),0) {base} AND trade_date>=:d", {"d": month_start})
+
+        # Win/loss counts (trade-level)
+        win_count  = scalar(f"SELECT COUNT(*) {base} AND net_pnl > 0")
+        loss_count = scalar(f"SELECT COUNT(*) {base} AND net_pnl < 0")
+
+        # Best and worst single trade
+        best_trade  = scalar(f"SELECT COALESCE(MAX(net_pnl),0) {base}")
+        worst_trade = scalar(f"SELECT COALESCE(MIN(net_pnl),0) {base}")
+
+        # Best and worst day (sum by date)
+        day_q = f"""
+            SELECT trade_date, SUM(net_pnl) AS dpnl
+            FROM trades WHERE user_id=:uid AND is_deleted=0{acct_filter}
+            GROUP BY trade_date
+        """
+        day_rows = conn.execute(text(day_q), params).fetchall()
+        day_pnls = [r[1] for r in day_rows if r[1] is not None]
+        best_day  = max(day_pnls) if day_pnls else 0
+        worst_day = min(day_pnls) if day_pnls else 0
+        trading_days = len(day_pnls)
+        avg_daily_pnl = round(total_pnl / trading_days, 2) if trading_days else 0
+        avg_trade_pnl = round(total_pnl / total_trades, 2) if total_trades else 0
+
+        # Recent 5 trades
+        recent_q = f"""
+            SELECT t.id, t.trade_date, t.ticker, t.net_pnl, t.side,
+                   ta.name AS account_name
+            FROM trades t JOIN trading_accounts ta ON ta.id=t.account_id
+            WHERE t.user_id=:uid AND t.is_deleted=0{acct_filter}
+            ORDER BY t.trade_date DESC, t.id DESC LIMIT 5
+        """
+        recent = [dict(r) for r in conn.execute(text(recent_q), params).mappings().fetchall()]
+
+    return {
+        "total_trades":   int(total_trades),
+        "total_pnl":      round(float(total_pnl), 2),
+        "today_pnl":      round(float(today_pnl), 2),
+        "week_pnl":       round(float(week_pnl), 2),
+        "month_pnl":      round(float(month_pnl), 2),
+        "win_count":      int(win_count),
+        "loss_count":     int(loss_count),
+        "best_trade":     round(float(best_trade), 2),
+        "worst_trade":    round(float(worst_trade), 2),
+        "best_day":       round(float(best_day), 2),
+        "worst_day":      round(float(worst_day), 2),
+        "trading_days":   int(trading_days),
+        "avg_daily_pnl":  avg_daily_pnl,
+        "avg_trade_pnl":  avg_trade_pnl,
+        "recent_trades":  recent,
+    }
+
+
+def get_withdrawal_totals(user_id: int, account_id: Optional[int] = None) -> Dict:
+    params: Dict[str, Any] = {"uid": user_id}
+    acct_filter = " AND account_id=:acct" if account_id else ""
+    if account_id:
+        params["acct"] = account_id
+
+    with get_engine().connect() as conn:
+        q = f"""
+            SELECT
+              COALESCE(SUM(gross_amount),0)         AS total_gross,
+              COALESCE(SUM(estimated_tax),0)         AS total_tax,
+              COALESCE(SUM(estimated_penalty),0)     AS total_penalty,
+              COALESCE(SUM(net_to_owner),0)          AS total_net,
+              COALESCE(SUM(retained_tax_reserve),0)  AS total_reserved,
+              COUNT(*)                               AS count
+            FROM withdrawals
+            WHERE user_id=:uid{acct_filter}
+        """
+        row = conn.execute(text(q), params).fetchone()
+
+    return {
+        "total_gross":    round(float(row[0] or 0), 2),
+        "total_tax":      round(float(row[1] or 0), 2),
+        "total_penalty":  round(float(row[2] or 0), 2),
+        "total_net":      round(float(row[3] or 0), 2),
+        "total_reserved": round(float(row[4] or 0), 2),
+        "count":          int(row[5] or 0),
+    }
+
+
+def get_calendar_data(
+    user_id: int, year: int, month: int,
+    account_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Returns a dict keyed by YYYY-MM-DD date string with
+    {pnl, trade_count, win, loss} for each day that has trades.
+    """
+    import calendar
+    month_start = f"{year:04d}-{month:02d}-01"
+    last_day = calendar.monthrange(year, month)[1]
+    month_end = f"{year:04d}-{month:02d}-{last_day:02d}"
+
+    params: Dict[str, Any] = {"uid": user_id, "ms": month_start, "me": month_end}
+    acct_filter = " AND account_id=:acct" if account_id else ""
+    if account_id:
+        params["acct"] = account_id
+
+    with get_engine().connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT
+              trade_date,
+              SUM(net_pnl)                      AS pnl,
+              COUNT(*)                           AS trade_count,
+              SUM(CASE WHEN net_pnl>0 THEN 1 ELSE 0 END) AS wins,
+              SUM(CASE WHEN net_pnl<0 THEN 1 ELSE 0 END) AS losses
+            FROM trades
+            WHERE user_id=:uid AND is_deleted=0
+              AND trade_date >= :ms AND trade_date <= :me
+              {acct_filter}
+            GROUP BY trade_date
+        """), params).fetchall()
+
+    result: Dict[str, Any] = {}
+    for row in rows:
+        result[row[0]] = {
+            "pnl":         round(float(row[1] or 0), 2),
+            "trade_count": int(row[2] or 0),
+            "wins":        int(row[3] or 0),
+            "losses":      int(row[4] or 0),
+        }
+    return result
+
+
+def get_cumulative_pnl_series(
+    user_id: int, account_id: Optional[int] = None, limit_days: int = 90
+) -> List[Dict]:
+    """
+    Returns [{date, daily_pnl, cumulative_pnl}] ordered by date ASC,
+    for the last `limit_days` calendar days that have trades.
+    """
+    params: Dict[str, Any] = {"uid": user_id, "limit": limit_days}
+    acct_filter = " AND account_id=:acct" if account_id else ""
+    if account_id:
+        params["acct"] = account_id
+
+    with get_engine().connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT trade_date, SUM(net_pnl) AS daily_pnl
+            FROM trades
+            WHERE user_id=:uid AND is_deleted=0{acct_filter}
+            GROUP BY trade_date
+            ORDER BY trade_date ASC
+            LIMIT :limit
+        """), params).fetchall()
+
+    cumulative = 0.0
+    result = []
+    for row in rows:
+        cumulative += float(row[1] or 0)
+        result.append({
+            "date":           row[0],
+            "daily_pnl":      round(float(row[1] or 0), 2),
+            "cumulative_pnl": round(cumulative, 2),
+        })
+    return result
+
+
+def get_accounting_dashboard_data(user_id: int) -> Dict:
+    """Combined data for the dashboard accounting section."""
+    stats     = get_trade_stats(user_id)
+    wt        = get_withdrawal_totals(user_id)
+    accounts  = get_trading_accounts(user_id)
+    active_accounts = sum(1 for a in accounts if a.get("is_active", 1) == 1)
+    return {
+        "trade_stats":      stats,
+        "withdrawal_totals": wt,
+        "active_accounts":  active_accounts,
+        "total_accounts":   len(accounts),
+    }
 
 
 # ------------------------------------------------------------------ #

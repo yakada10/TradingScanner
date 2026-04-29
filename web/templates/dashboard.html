@@ -14,7 +14,62 @@
 {% block content %}
 <div class="page-content">
 
-  <!-- KPI Cards -->
+  <!-- ── Journal KPI row ─────────────────────────────────────────── -->
+  {% set ts = acct.trade_stats %}
+  {% set wt = acct.withdrawal_totals %}
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--text-dim);margin-bottom:10px;">Trading Journal</div>
+  <div class="kpi-grid" style="margin-bottom:10px;">
+    {% set today_cls = 'ideal' if ts.today_pnl > 0 else ('avoid' if ts.today_pnl < 0 else 'neutral') %}
+    <div class="kpi-card {{ today_cls }}">
+      <div class="kpi-label">Today P&amp;L</div>
+      <div class="kpi-value" style="font-size:22px;">{{ "${:,.0f}".format(ts.today_pnl) if ts.today_pnl >= 0 else "-${:,.0f}".format(ts.today_pnl|abs) }}</div>
+      <div class="kpi-sub">{{ ts.total_trades }} trades all-time</div>
+    </div>
+    {% set wk_cls = 'ideal' if ts.week_pnl > 0 else ('avoid' if ts.week_pnl < 0 else 'neutral') %}
+    <div class="kpi-card {{ wk_cls }}">
+      <div class="kpi-label">This Week</div>
+      <div class="kpi-value" style="font-size:22px;">{{ "${:,.0f}".format(ts.week_pnl) if ts.week_pnl >= 0 else "-${:,.0f}".format(ts.week_pnl|abs) }}</div>
+      <div class="kpi-sub">{{ ts.trading_days }} trading days</div>
+    </div>
+    {% set mo_cls = 'ideal' if ts.month_pnl > 0 else ('avoid' if ts.month_pnl < 0 else 'neutral') %}
+    <div class="kpi-card {{ mo_cls }}">
+      <div class="kpi-label">This Month</div>
+      <div class="kpi-value" style="font-size:22px;">{{ "${:,.0f}".format(ts.month_pnl) if ts.month_pnl >= 0 else "-${:,.0f}".format(ts.month_pnl|abs) }}</div>
+      <div class="kpi-sub">Avg trade: {{ "${:,.0f}".format(ts.avg_trade_pnl) if ts.avg_trade_pnl >= 0 else "-${:,.0f}".format(ts.avg_trade_pnl|abs) }}</div>
+    </div>
+    {% set at_cls = 'ideal' if ts.total_pnl > 0 else ('avoid' if ts.total_pnl < 0 else 'neutral') %}
+    <div class="kpi-card {{ at_cls }}">
+      <div class="kpi-label">All-Time P&amp;L</div>
+      <div class="kpi-value" style="font-size:22px;">{{ "${:,.0f}".format(ts.total_pnl) if ts.total_pnl >= 0 else "-${:,.0f}".format(ts.total_pnl|abs) }}</div>
+      <div class="kpi-sub">{{ acct.active_accounts }} active account{{ 's' if acct.active_accounts != 1 else '' }}</div>
+    </div>
+  </div>
+
+  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px;">
+    <div class="kpi-card neutral">
+      <div class="kpi-label">Tax Reserved</div>
+      <div class="kpi-value" style="font-size:18px;color:var(--watchlist);">${{ "{:,.0f}".format(wt.total_reserved) }}</div>
+      <div class="kpi-sub">Estimated set aside</div>
+    </div>
+    <div class="kpi-card neutral">
+      <div class="kpi-label">Est. Tax Owed</div>
+      <div class="kpi-value" style="font-size:18px;color:var(--watchlist);">${{ "{:,.0f}".format(wt.total_tax) }}</div>
+      <div class="kpi-sub">Planning estimate only</div>
+    </div>
+    <div class="kpi-card neutral">
+      <div class="kpi-label">Est. Penalties</div>
+      <div class="kpi-value" style="font-size:18px;color:var(--avoid);">${{ "{:,.0f}".format(wt.total_penalty) }}</div>
+      <div class="kpi-sub">From retirement accounts</div>
+    </div>
+    <div class="kpi-card neutral">
+      <div class="kpi-label">Net Withdrawn</div>
+      <div class="kpi-value" style="font-size:18px;color:var(--ideal);">${{ "{:,.0f}".format(wt.total_net) }}</div>
+      <div class="kpi-sub">{{ wt.count }} distribution{{ 's' if wt.count != 1 else '' }}</div>
+    </div>
+  </div>
+
+  <!-- ── Scanner KPI row ─────────────────────────────────────────── -->
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--text-dim);margin-bottom:10px;">Stock Scanner</div>
   <div class="kpi-grid">
     <div class="kpi-card neutral">
       <div class="kpi-label">Total Scans</div>
@@ -172,12 +227,58 @@
       </div>
     </div>
 
+    <!-- Recent Trades -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Recent Trades</div>
+          <div class="card-sub">Latest journal entries</div>
+        </div>
+        <a href="/accountant/trades" class="btn btn-sm">View all</a>
+      </div>
+      <div class="card-body" style="padding:0 20px;">
+        {% if ts.recent_trades %}
+          {% for t in ts.recent_trades %}
+          <div class="scan-item">
+            <div style="display:flex;flex-direction:column;flex:1;gap:2px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-family:'SF Mono',monospace;font-weight:700;font-size:13px;color:var(--text);">{{ t.ticker }}</span>
+                <span style="font-size:11px;color:var(--text-dim);">{{ t.trade_date[:10] }}</span>
+                <span style="font-size:11px;color:var(--text-dim);">{{ t.account_name }}</span>
+              </div>
+            </div>
+            {% if t.net_pnl > 0 %}
+              <span class="pnl-pos" style="font-family:'SF Mono',monospace;font-size:13px;">${{ "{:,.0f}".format(t.net_pnl) }}</span>
+            {% elif t.net_pnl < 0 %}
+              <span class="pnl-neg" style="font-family:'SF Mono',monospace;font-size:13px;">-${{ "{:,.0f}".format(t.net_pnl|abs) }}</span>
+            {% else %}
+              <span class="pnl-zero" style="font-family:'SF Mono',monospace;font-size:13px;">$0</span>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty-state" style="padding:28px 0;">
+            <p>No trades logged yet.</p>
+            <a href="/accountant/trades" class="btn btn-primary btn-sm">Log your first trade</a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
     <!-- Quick actions -->
     <div class="card">
       <div class="card-header">
         <div class="card-title">Quick Actions</div>
       </div>
       <div class="card-body" style="display:flex;flex-direction:column;gap:10px;">
+        <a href="/accountant/trades" class="btn btn-primary" style="justify-content:flex-start;gap:10px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Log a Trade
+        </a>
+        <a href="/accountant/calendar" class="btn" style="justify-content:flex-start;gap:10px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Trading Calendar
+        </a>
         <a href="/scanner?universe=sp500" class="btn" style="justify-content:flex-start;gap:10px;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
           Scan S&amp;P 500
@@ -186,13 +287,9 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           Scan Nasdaq Full
         </a>
-        <a href="/scanner?universe=nyse_nasdaq_full" class="btn" style="justify-content:flex-start;gap:10px;">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          Scan NYSE + Nasdaq
-        </a>
         <a href="/scanner" class="btn" style="justify-content:flex-start;gap:10px;">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Evaluate a specific ticker
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          Evaluate a ticker
         </a>
       </div>
     </div>

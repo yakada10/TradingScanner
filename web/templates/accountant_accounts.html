@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+{% block title %}Accounts — tradetuu{% endblock %}
+{% block page_title %}Trading Accounts{% endblock %}
+{% block page_sub %}Manage your brokerage and trading accounts{% endblock %}
+
+{% block topbar_right %}
+<button class="btn btn-primary btn-sm" onclick="openAccountModal()">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  New Account
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="page-content">
+
+  <!-- Sub-nav -->
+  <div class="sub-nav">
+    <a href="/accountant/trades" class="sub-nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Trades
+    </a>
+    <a href="/accountant/calendar" class="sub-nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Calendar
+    </a>
+    <a href="/accountant/accounts" class="sub-nav-link active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      Accounts
+    </a>
+    <a href="/accountant/withdrawals" class="sub-nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Withdrawals
+    </a>
+  </div>
+
+  {% if not accounts %}
+  <div class="card">
+    <div class="empty-state" style="padding:64px 24px;">
+      <div class="icon">💳</div>
+      <h3>No accounts yet</h3>
+      <p>Create your first trading account to start logging trades. You can have multiple accounts for different brokers, IRAs, and account types.</p>
+      <button class="btn btn-primary" onclick="openAccountModal()">Create your first account</button>
+    </div>
+  </div>
+  {% else %}
+
+  <!-- Accounts grid -->
+  <div class="accounts-grid" id="accountsGrid">
+    {% for acct in accounts %}
+    <div class="account-card {% if acct.is_active == -1 %}archived{% endif %}"
+         onclick="window.location='/accountant/accounts/{{ acct.id }}'">
+      <div class="account-card-header">
+        <div>
+          <div class="account-card-name">{{ acct.name }}</div>
+          <div class="account-card-broker">{{ acct.broker or 'No broker specified' }}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+          <span class="acct-badge {{ acct.account_type }}">
+            {{ account_types.get(acct.account_type, acct.account_type) }}
+          </span>
+          {% if acct.is_active == -1 %}
+            <span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px;">Archived</span>
+          {% elif acct.is_active == 0 %}
+            <span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px;">Inactive</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="account-card-stats">
+        <div>
+          <div class="account-stat-label">Total P&L</div>
+          <div class="account-stat-value {% if acct.total_pnl > 0 %}pnl-pos{% elif acct.total_pnl < 0 %}pnl-neg{% else %}pnl-zero{% endif %}" style="font-size:15px;">
+            {{ "${:,.0f}".format(acct.total_pnl) if acct.total_pnl >= 0 else "-${:,.0f}".format(acct.total_pnl|abs) }}
+          </div>
+        </div>
+        <div>
+          <div class="account-stat-label">Trades</div>
+          <div class="account-stat-value" style="font-size:15px;color:var(--text);">{{ acct.trade_count }}</div>
+        </div>
+        <div>
+          <div class="account-stat-label">Tax Reserve %</div>
+          <div class="account-stat-value" style="font-size:15px;color:var(--text-muted);">{{ acct.default_tax_reserve_pct | int }}%</div>
+        </div>
+        <div>
+          <div class="account-stat-label">Starting Balance</div>
+          <div class="account-stat-value" style="font-size:13px;color:var(--text-dim);">
+            {% if acct.starting_balance %}${{ "{:,.0f}".format(acct.starting_balance) }}{% else %}—{% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:8px;"
+           onclick="event.stopPropagation();">
+        <button class="btn btn-sm" style="flex:1;"
+                onclick="openEditAccountModal(ACCTS[{{ loop.index0 }}])">Edit</button>
+        {% if acct.is_active >= 0 %}
+        <button class="btn btn-sm btn-danger"
+                onclick="openArchiveModal({{ acct.id }}, {{ acct.name | tojson }})">Archive</button>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% endif %}
+</div>
+
+<!-- ── Account Modal ──────────────────────────────────────────── -->
+<div class="modal-overlay" id="accountModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <div class="modal-title" id="acctModalTitle">New Account</div>
+      <button class="modal-close" onclick="closeAccountModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="acctId">
+
+      <div class="form-row" style="margin-bottom:16px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Account Name *</label>
+          <input type="text" class="form-input" id="f_name" placeholder="e.g. TD Ameritrade Main">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Broker / Platform</label>
+          <input type="text" class="form-input" id="f_broker" placeholder="e.g. Schwab, IBKR, TopstepX">
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-bottom:16px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Account Type *</label>
+          <select class="form-select" id="f_account_type" onchange="onTypeChange()">
+            {% for k, v in account_types.items() %}
+            <option value="{{ k }}">{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="f_is_active">
+            <option value="1">Active</option>
+            <option value="0">Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-bottom:16px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Starting Balance ($)</label>
+          <input type="number" class="form-input" id="f_starting_balance" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Default Tax Reserve %</label>
+          <input type="number" class="form-input" id="f_tax_reserve" step="0.1" min="0" max="100" placeholder="30">
+          <div class="form-hint" id="reserveHint">Used to estimate tax on distributions.</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="f_acct_notes" placeholder="Account purpose, login notes, strategy focus…"></textarea>
+      </div>
+
+      <!-- Type-specific info box -->
+      <div id="typeInfoBox" style="display:none;margin-top:12px;" class="disclaimer-box"></div>
+
+      <div id="acctFormError" class="form-error" style="display:none;margin-top:8px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeAccountModal()">Cancel</button>
+      <button class="btn btn-primary" id="acctSubmitBtn" onclick="submitAccount()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Archive confirm modal ─────────────────────────────────── -->
+<div class="modal-overlay" id="archiveModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <div class="modal-title">Archive Account</div>
+      <button class="modal-close" onclick="closeArchiveModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-muted);font-size:13px;">
+        Archive <strong id="archiveAcctName"></strong>? The account and all its trade history will remain in your records — it just won't appear in active dropdowns.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeArchiveModal()">Cancel</button>
+      <button class="btn btn-danger" id="archiveConfirmBtn" onclick="confirmArchive()">Archive</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ACCTS = {{ accounts | tojson }};
+const TYPE_INFO = {
+  taxable:         'Taxable brokerage: gains/losses are generally taxable. Tax reserve % applies to estimated withdrawals.',
+  roth_ira:        'Roth IRA: qualified distributions are tax-free and penalty-free. Non-qualified distributions may incur tax and early-withdrawal penalty.',
+  traditional_ira: 'Traditional IRA: contributions are pre-tax. Distributions are ordinary income. Under-59½ distributions may incur a 10% penalty unless an exception applies.',
+  rollover_ira:    'Rollover IRA: treated like a Traditional IRA for distribution purposes. Pre-tax funds; distributions are ordinary income.',
+  futures:         'Futures account (Section 1256): generally subject to the 60/40 tax rule (60% long-term, 40% short-term). Tax reserve % is used for planning estimates.',
+  prop:            'Prop / Evaluation account: profit distributions may be treated as contractor income. Tax reserve % applies for planning estimates.',
+  paper:           'Paper / Demo account: no real money or real tax consequences. Useful for tracking performance metrics only.',
+  other:           'Custom account type: configure tax reserve % manually. Tax estimates use your specified reserve percentage.',
+};
+
+let archiveAcctId = null;
+
+function onTypeChange() {
+  const t = document.getElementById('f_account_type').value;
+  const box = document.getElementById('typeInfoBox');
+  const hint = document.getElementById('reserveHint');
+  if (TYPE_INFO[t]) {
+    box.textContent = TYPE_INFO[t];
+    box.style.display = 'block';
+  } else {
+    box.style.display = 'none';
+  }
+  // Roth IRA qualified → reserve = 0 default
+  if (t === 'roth_ira') {
+    if (!document.getElementById('acctId').value) {
+      document.getElementById('f_tax_reserve').value = '0';
+    }
+    hint.textContent = 'Qualified Roth distributions are tax-free. Set to 0 if you only expect qualified distributions.';
+  } else if (t === 'paper') {
+    document.getElementById('f_tax_reserve').value = '0';
+    hint.textContent = 'No tax implications for demo/paper accounts.';
+  } else {
+    hint.textContent = 'Used to estimate tax on distributions.';
+    if (!document.getElementById('acctId').value) {
+      document.getElementById('f_tax_reserve').value = '30';
+    }
+  }
+}
+
+function openAccountModal() {
+  document.getElementById('acctId').value = '';
+  document.getElementById('acctModalTitle').textContent = 'New Account';
+  document.getElementById('acctSubmitBtn').textContent = 'Create Account';
+  document.getElementById('f_name').value = '';
+  document.getElementById('f_broker').value = '';
+  document.getElementById('f_account_type').value = 'taxable';
+  document.getElementById('f_is_active').value = '1';
+  document.getElementById('f_starting_balance').value = '';
+  document.getElementById('f_tax_reserve').value = '30';
+  document.getElementById('f_acct_notes').value = '';
+  document.getElementById('acctFormError').style.display = 'none';
+  onTypeChange();
+  document.getElementById('accountModal').classList.add('open');
+  document.getElementById('f_name').focus();
+}
+
+function openEditAccountModal(acct) {
+  document.getElementById('acctId').value = acct.id;
+  document.getElementById('acctModalTitle').textContent = 'Edit Account';
+  document.getElementById('acctSubmitBtn').textContent = 'Save Changes';
+  document.getElementById('f_name').value = acct.name || '';
+  document.getElementById('f_broker').value = acct.broker || '';
+  document.getElementById('f_account_type').value = acct.account_type || 'taxable';
+  document.getElementById('f_is_active').value = acct.is_active >= 1 ? '1' : '0';
+  document.getElementById('f_starting_balance').value = acct.starting_balance || '';
+  document.getElementById('f_tax_reserve').value = acct.default_tax_reserve_pct != null ? acct.default_tax_reserve_pct : '30';
+  document.getElementById('f_acct_notes').value = acct.notes || '';
+  document.getElementById('acctFormError').style.display = 'none';
+  onTypeChange();
+  document.getElementById('accountModal').classList.add('open');
+}
+
+function closeAccountModal() {
+  document.getElementById('accountModal').classList.remove('open');
+}
+
+async function submitAccount() {
+  const btn = document.getElementById('acctSubmitBtn');
+  const errEl = document.getElementById('acctFormError');
+  errEl.style.display = 'none';
+
+  const name = document.getElementById('f_name').value.trim();
+  if (!name) { showErr('Account name is required.'); return; }
+
+  const payload = {
+    name,
+    broker:                  document.getElementById('f_broker').value.trim(),
+    account_type:            document.getElementById('f_account_type').value,
+    is_active:               document.getElementById('f_is_active').value === '1',
+    starting_balance:        parseFloat(document.getElementById('f_starting_balance').value) || 0,
+    default_tax_reserve_pct: parseFloat(document.getElementById('f_tax_reserve').value) || 0,
+    notes:                   document.getElementById('f_acct_notes').value.trim(),
+  };
+
+  const acctId = document.getElementById('acctId').value;
+  const isEdit = !!acctId;
+  const url    = isEdit ? `/api/accountant/accounts/${acctId}` : '/api/accountant/accounts';
+  const method = isEdit ? 'PUT' : 'POST';
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  const res = await apiFetch(url, {
+    method,
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  btn.disabled = false;
+  btn.textContent = isEdit ? 'Save Changes' : 'Create Account';
+
+  if (!res || !res.ok) {
+    const err = await (res ? res.json().catch(()=>({detail:'Error'})) : {detail:'Request failed'});
+    showErr(err.detail || 'Failed to save account.');
+    return;
+  }
+  closeAccountModal();
+  toast(isEdit ? 'Account updated.' : 'Account created.', 'success');
+  setTimeout(() => location.reload(), 600);
+
+  function showErr(msg) {
+    errEl.textContent = msg;
+    errEl.style.display = 'block';
+  }
+}
+
+function openArchiveModal(id, name) {
+  archiveAcctId = id;
+  document.getElementById('archiveAcctName').textContent = name;
+  document.getElementById('archiveModal').classList.add('open');
+}
+function closeArchiveModal() {
+  document.getElementById('archiveModal').classList.remove('open');
+  archiveAcctId = null;
+}
+async function confirmArchive() {
+  if (!archiveAcctId) return;
+  const btn = document.getElementById('archiveConfirmBtn');
+  btn.disabled = true;
+  const res = await apiFetch(`/api/accountant/accounts/${archiveAcctId}`, {method:'DELETE'});
+  btn.disabled = false;
+  closeArchiveModal();
+  if (res && res.ok) {
+    toast('Account archived.', 'success');
+    setTimeout(() => location.reload(), 600);
+  } else {
+    toast('Failed to archive account.', 'error');
+  }
+}
+
+// Close modals on overlay click
+document.getElementById('accountModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeAccountModal();
+});
+document.getElementById('archiveModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeArchiveModal();
+});
+</script>
+{% endblock %}

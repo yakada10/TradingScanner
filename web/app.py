@@ -292,12 +292,15 @@ async def dashboard_page(request: Request):
     current_user = _require_user(request)
     stats = db.get_dashboard_stats()
     recent_jobs = db.list_recent_jobs(limit=8)
+    acct_data = db.get_accounting_dashboard_data(current_user["id"])
     return templates.TemplateResponse("dashboard.html", {
-        "request": request,
+        "request":      request,
         "current_user": current_user,
-        "active_page": "dashboard",
-        "stats": stats,
-        "recent_jobs": recent_jobs,
+        "active_page":  "dashboard",
+        "stats":        stats,
+        "recent_jobs":  recent_jobs,
+        "acct":         acct_data,
+        "account_types": ACCOUNT_TYPES,
     })
 
 
@@ -413,6 +416,490 @@ async def evaluate_ticker(request: Request, body: EvaluateRequest):
     except Exception as exc:
         log.error("Evaluate error for %s: %s", ticker, exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ═════════════════════════════════════════════════════════════════
+#  ACCOUNTANT — helpers and constants
+# ═════════════════════════════════════════════════════════════════
+
+ACCOUNT_TYPES = {
+    "taxable":         "Taxable Brokerage",
+    "roth_ira":        "Roth IRA",
+    "traditional_ira": "Traditional IRA",
+    "rollover_ira":    "Rollover IRA",
+    "futures":         "Futures Account",
+    "prop":            "Prop / Evaluation",
+    "paper":           "Paper / Demo",
+    "other":           "Other / Custom",
+}
+
+DISTRIBUTION_TYPES = [
+    ("profit_distribution",  "Profit Distribution"),
+    ("capital_return",       "Return of Capital"),
+    ("owner_draw",           "Owner Draw / Living Expenses"),
+    ("quarterly_tax",        "Quarterly Tax Estimate Payment"),
+    ("tax_reserve_transfer", "Tax Reserve Transfer"),
+    ("ira_qualified",        "Qualified IRA Distribution"),
+    ("ira_non_qualified",    "Non-Qualified IRA Distribution"),
+    ("roth_qualified",       "Roth Qualified Distribution"),
+    ("roth_non_qualified",   "Roth Non-Qualified Distribution"),
+    ("other",                "Other"),
+]
+
+STRATEGY_TAGS = [
+    "Momentum", "Reversal", "Breakout", "Scalp", "Gap & Go",
+    "VWAP", "Earnings Play", "Support / Resistance", "News Catalyst",
+    "Options", "Futures", "Swing", "Other",
+]
+
+CONFIDENCE_TAGS = [
+    "High Conviction", "Medium Conviction", "Low Conviction",
+    "Impulsive / FOMO", "Revenge Trade", "Well-Planned",
+]
+
+
+def _estimate_withdrawal(
+    account_type: str,
+    gross_amount: float,
+    tax_reserve_pct: float,
+    under_59_5: bool = False,
+    penalty_exception: bool = False,
+    qualified_distribution: bool = True,
+) -> dict:
+    """
+    Estimate tax/penalty for a withdrawal based on account type.
+    All values are ESTIMATES for planning purposes only — not tax advice.
+    """
+    gross = max(float(gross_amount or 0), 0)
+    res   = max(float(tax_reserve_pct or 0), 0)
+
+    if account_type in ("taxable", "futures"):
+        est_tax     = round(gross * res / 100, 2)
+        est_penalty = 0.0
+        retained    = est_tax
+        net         = round(gross - est_tax, 2)
+
+    elif account_type == "roth_ira":
+        if qualified_distribution:
+            est_tax = est_penalty = retained = 0.0
+            net = gross
+        else:
+            est_tax     = round(gross * res / 100, 2)
+            est_penalty = round(gross * 0.10, 2) if (under_59_5 and not penalty_exception) else 0.0
+            retained    = est_tax
+            net         = round(gross - est_tax - est_penalty, 2)
+
+    elif account_type in ("traditional_ira", "rollover_ira"):
+        est_tax     = round(gross * res / 100, 2)
+        est_penalty = round(gross * 0.10, 2) if (under_59_5 and not penalty_exception) else 0.0
+        retained    = est_tax
+        net         = round(gross - est_tax - est_penalty, 2)
+
+    else:  # prop, paper, other, unknown
+        est_tax     = round(gross * res / 100, 2)
+        est_penalty = 0.0
+        retained    = est_tax
+        net         = round(gross - est_tax, 2)
+
+    return {
+        "estimated_tax":        est_tax,
+        "estimated_penalty":    est_penalty,
+        "net_to_owner":         max(net, 0.0),
+        "retained_tax_reserve": retained,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────
+#  Accountant page routes
+# ─────────────────────────────────────────────────────────────────
+
+@app.get("/accountant", response_class=HTMLResponse)
+async def accountant_root(request: Request):
+    return RedirectResponse(url="/accountant/trades", status_code=303)
+
+
+@app.get("/accountant/trades", response_class=HTMLResponse)
+async def accountant_trades_page(request: Request):
+    current_user = _require_user(request)
+    accounts = db.get_trading_accounts(current_user["id"])
+    stats    = db.get_trade_stats(current_user["id"])
+    return templates.TemplateResponse("accountant_trades.html", {
+        "request":      request,
+        "current_user": current_user,
+        "active_page":  "accountant",
+        "active_sub":   "trades",
+        "accounts":     accounts,
+        "stats":        stats,
+        "account_types": ACCOUNT_TYPES,
+        "strategy_tags": STRATEGY_TAGS,
+        "confidence_tags": CONFIDENCE_TAGS,
+    })
+
+
+@app.get("/accountant/calendar", response_class=HTMLResponse)
+async def accountant_calendar_page(request: Request):
+    current_user = _require_user(request)
+    accounts = db.get_trading_accounts(current_user["id"])
+    return templates.TemplateResponse("accountant_calendar.html", {
+        "request":      request,
+        "current_user": current_user,
+        "active_page":  "accountant",
+        "active_sub":   "calendar",
+        "accounts":     accounts,
+    })
+
+
+@app.get("/accountant/accounts", response_class=HTMLResponse)
+async def accountant_accounts_page(request: Request):
+    current_user = _require_user(request)
+    accounts = db.get_trading_accounts(current_user["id"], include_archived=True)
+    return templates.TemplateResponse("accountant_accounts.html", {
+        "request":       request,
+        "current_user":  current_user,
+        "active_page":   "accountant",
+        "active_sub":    "accounts",
+        "accounts":      accounts,
+        "account_types": ACCOUNT_TYPES,
+    })
+
+
+@app.get("/accountant/accounts/{account_id}", response_class=HTMLResponse)
+async def accountant_account_detail_page(request: Request, account_id: int):
+    current_user = _require_user(request)
+    account = db.get_trading_account(account_id, current_user["id"])
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    stats   = db.get_trade_stats(current_user["id"], account_id=account_id)
+    wt      = db.get_withdrawal_totals(current_user["id"], account_id=account_id)
+    series  = db.get_cumulative_pnl_series(current_user["id"], account_id=account_id)
+    return templates.TemplateResponse("accountant_account_detail.html", {
+        "request":       request,
+        "current_user":  current_user,
+        "active_page":   "accountant",
+        "active_sub":    "accounts",
+        "account":       account,
+        "stats":         stats,
+        "wt":            wt,
+        "series_json":   __import__("json").dumps(series),
+        "account_types": ACCOUNT_TYPES,
+        "account_type_label": ACCOUNT_TYPES.get(account.get("account_type", ""), "Unknown"),
+    })
+
+
+@app.get("/accountant/withdrawals", response_class=HTMLResponse)
+async def accountant_withdrawals_page(request: Request):
+    current_user = _require_user(request)
+    accounts = db.get_trading_accounts(current_user["id"])
+    wt       = db.get_withdrawal_totals(current_user["id"])
+    return templates.TemplateResponse("accountant_withdrawals.html", {
+        "request":            request,
+        "current_user":       current_user,
+        "active_page":        "accountant",
+        "active_sub":         "withdrawals",
+        "accounts":           accounts,
+        "wt":                 wt,
+        "account_types":      ACCOUNT_TYPES,
+        "distribution_types": DISTRIBUTION_TYPES,
+    })
+
+
+# ─────────────────────────────────────────────────────────────────
+#  Accountant API — Trading Accounts
+# ─────────────────────────────────────────────────────────────────
+
+class AccountCreate(BaseModel):
+    name: str
+    broker: str = ""
+    account_type: str = "taxable"
+    is_active: bool = True
+    starting_balance: float = 0.0
+    default_tax_reserve_pct: float = 30.0
+    notes: str = ""
+
+
+@app.get("/api/accountant/accounts")
+async def api_get_accounts(request: Request):
+    user = _require_user_api(request)
+    return db.get_trading_accounts(user["id"])
+
+
+@app.post("/api/accountant/accounts")
+async def api_create_account(request: Request, body: AccountCreate):
+    user = _require_user_api(request)
+    if not body.name.strip():
+        raise HTTPException(status_code=400, detail="Account name required")
+    if body.account_type not in ACCOUNT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid account type")
+    acct_id = db.create_trading_account(
+        user["id"], body.name.strip(), body.broker.strip() or None,
+        body.account_type, body.is_active, body.starting_balance,
+        body.default_tax_reserve_pct, body.notes.strip() or None,
+    )
+    return {"id": acct_id, "status": "created"}
+
+
+@app.put("/api/accountant/accounts/{account_id}")
+async def api_update_account(request: Request, account_id: int, body: AccountCreate):
+    user = _require_user_api(request)
+    existing = db.get_trading_account(account_id, user["id"])
+    if not existing:
+        raise HTTPException(status_code=404, detail="Account not found")
+    db.update_trading_account(
+        account_id, user["id"],
+        name=body.name.strip(),
+        broker=body.broker.strip() or None,
+        account_type=body.account_type,
+        is_active=1 if body.is_active else 0,
+        starting_balance=body.starting_balance,
+        default_tax_reserve_pct=body.default_tax_reserve_pct,
+        notes=body.notes.strip() or None,
+    )
+    return {"id": account_id, "status": "updated"}
+
+
+@app.delete("/api/accountant/accounts/{account_id}")
+async def api_archive_account(request: Request, account_id: int):
+    user = _require_user_api(request)
+    existing = db.get_trading_account(account_id, user["id"])
+    if not existing:
+        raise HTTPException(status_code=404, detail="Account not found")
+    db.archive_trading_account(account_id, user["id"])
+    return {"status": "archived"}
+
+
+# ─────────────────────────────────────────────────────────────────
+#  Accountant API — Trades
+# ─────────────────────────────────────────────────────────────────
+
+class TradeCreate(BaseModel):
+    account_id: int
+    trade_date: str
+    ticker: str
+    side: str = ""
+    gross_pnl: float = 0.0
+    fees: float = 0.0
+    net_pnl: float = 0.0
+    quantity: float = None
+    entry_price: float = None
+    exit_price: float = None
+    strategy_tag: str = ""
+    confidence_tag: str = ""
+    notes: str = ""
+    screenshot_url: str = ""
+
+
+@app.get("/api/accountant/trades")
+async def api_get_trades(
+    request: Request,
+    account_id: int = None,
+    date_from: str = None,
+    date_to: str = None,
+    ticker: str = None,
+    limit: int = 200,
+    offset: int = 0,
+):
+    user = _require_user_api(request)
+    trades = db.get_trades(
+        user["id"], account_id=account_id,
+        date_from=date_from, date_to=date_to,
+        ticker=ticker, limit=min(limit, 500), offset=offset,
+    )
+    return trades
+
+
+@app.post("/api/accountant/trades")
+async def api_create_trade(request: Request, body: TradeCreate):
+    user = _require_user_api(request)
+    # Verify account belongs to user
+    acct = db.get_trading_account(body.account_id, user["id"])
+    if not acct:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if not body.ticker.strip():
+        raise HTTPException(status_code=400, detail="Ticker required")
+    # Auto-calculate net_pnl if not explicitly provided
+    net_pnl = round(float(body.gross_pnl) - float(body.fees or 0), 2)
+    # Allow manual override if net_pnl differs meaningfully
+    if abs(body.net_pnl - net_pnl) > 0.01:
+        net_pnl = round(float(body.net_pnl), 2)
+    trade_id = db.create_trade(
+        user["id"], body.account_id, body.trade_date, body.ticker,
+        body.side.strip() or None, body.gross_pnl, body.fees or 0, net_pnl,
+        body.quantity, body.entry_price, body.exit_price,
+        body.strategy_tag.strip() or None,
+        body.confidence_tag.strip() or None,
+        body.notes.strip() or None,
+        body.screenshot_url.strip() or None,
+    )
+    return {"id": trade_id, "net_pnl": net_pnl, "status": "created"}
+
+
+@app.put("/api/accountant/trades/{trade_id}")
+async def api_update_trade(request: Request, trade_id: int, body: TradeCreate):
+    user = _require_user_api(request)
+    existing = db.get_trade(trade_id, user["id"])
+    if not existing:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    acct = db.get_trading_account(body.account_id, user["id"])
+    if not acct:
+        raise HTTPException(status_code=404, detail="Account not found")
+    net_pnl = round(float(body.gross_pnl) - float(body.fees or 0), 2)
+    if abs(body.net_pnl - net_pnl) > 0.01:
+        net_pnl = round(float(body.net_pnl), 2)
+    db.update_trade(
+        trade_id, user["id"],
+        account_id=body.account_id, trade_date=body.trade_date,
+        ticker=body.ticker, side=body.side.strip() or None,
+        gross_pnl=body.gross_pnl, fees=body.fees or 0, net_pnl=net_pnl,
+        quantity=body.quantity, entry_price=body.entry_price,
+        exit_price=body.exit_price,
+        strategy_tag=body.strategy_tag.strip() or None,
+        confidence_tag=body.confidence_tag.strip() or None,
+        notes=body.notes.strip() or None,
+        screenshot_url=body.screenshot_url.strip() or None,
+    )
+    return {"id": trade_id, "net_pnl": net_pnl, "status": "updated"}
+
+
+@app.delete("/api/accountant/trades/{trade_id}")
+async def api_delete_trade(request: Request, trade_id: int):
+    user = _require_user_api(request)
+    existing = db.get_trade(trade_id, user["id"])
+    if not existing:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    db.delete_trade(trade_id, user["id"])
+    return {"status": "deleted"}
+
+
+# ─────────────────────────────────────────────────────────────────
+#  Accountant API — Withdrawals
+# ─────────────────────────────────────────────────────────────────
+
+class WithdrawalCreate(BaseModel):
+    account_id: int
+    withdrawal_date: str
+    gross_amount: float
+    tax_reserve_pct: float = 30.0
+    distribution_type: str = ""
+    penalty_exception: bool = False
+    under_59_5: bool = False
+    qualified_distribution: bool = True
+    notes: str = ""
+
+
+@app.get("/api/accountant/withdrawals")
+async def api_get_withdrawals(
+    request: Request, account_id: int = None, limit: int = 100
+):
+    user = _require_user_api(request)
+    return db.get_withdrawals(user["id"], account_id=account_id, limit=limit)
+
+
+@app.post("/api/accountant/withdrawals")
+async def api_create_withdrawal(request: Request, body: WithdrawalCreate):
+    user = _require_user_api(request)
+    acct = db.get_trading_account(body.account_id, user["id"])
+    if not acct:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if body.gross_amount <= 0:
+        raise HTTPException(status_code=400, detail="Gross amount must be positive")
+    estimates = _estimate_withdrawal(
+        acct["account_type"], body.gross_amount, body.tax_reserve_pct,
+        body.under_59_5, body.penalty_exception, body.qualified_distribution,
+    )
+    wd_id = db.create_withdrawal(
+        user["id"], body.account_id, body.withdrawal_date, body.gross_amount,
+        body.tax_reserve_pct, estimates["estimated_tax"],
+        estimates["estimated_penalty"], estimates["net_to_owner"],
+        estimates["retained_tax_reserve"],
+        body.distribution_type.strip() or None,
+        body.penalty_exception, body.under_59_5, body.qualified_distribution,
+        body.notes.strip() or None,
+    )
+    return {"id": wd_id, "status": "created", **estimates}
+
+
+@app.put("/api/accountant/withdrawals/{withdrawal_id}")
+async def api_update_withdrawal(request: Request, withdrawal_id: int, body: WithdrawalCreate):
+    user = _require_user_api(request)
+    existing = db.get_withdrawal(withdrawal_id, user["id"])
+    if not existing:
+        raise HTTPException(status_code=404, detail="Withdrawal not found")
+    acct = db.get_trading_account(body.account_id, user["id"])
+    if not acct:
+        raise HTTPException(status_code=404, detail="Account not found")
+    estimates = _estimate_withdrawal(
+        acct["account_type"], body.gross_amount, body.tax_reserve_pct,
+        body.under_59_5, body.penalty_exception, body.qualified_distribution,
+    )
+    db.update_withdrawal(
+        withdrawal_id, user["id"],
+        account_id=body.account_id, withdrawal_date=body.withdrawal_date,
+        gross_amount=body.gross_amount, tax_reserve_pct=body.tax_reserve_pct,
+        estimated_tax=estimates["estimated_tax"],
+        estimated_penalty=estimates["estimated_penalty"],
+        net_to_owner=estimates["net_to_owner"],
+        retained_tax_reserve=estimates["retained_tax_reserve"],
+        distribution_type=body.distribution_type.strip() or None,
+        penalty_exception=1 if body.penalty_exception else 0,
+        under_59_5=1 if body.under_59_5 else 0,
+        qualified_distribution=1 if body.qualified_distribution else 0,
+        notes=body.notes.strip() or None,
+    )
+    return {"id": withdrawal_id, "status": "updated", **estimates}
+
+
+@app.delete("/api/accountant/withdrawals/{withdrawal_id}")
+async def api_delete_withdrawal(request: Request, withdrawal_id: int):
+    user = _require_user_api(request)
+    existing = db.get_withdrawal(withdrawal_id, user["id"])
+    if not existing:
+        raise HTTPException(status_code=404, detail="Withdrawal not found")
+    db.delete_withdrawal(withdrawal_id, user["id"])
+    return {"status": "deleted"}
+
+
+# ─────────────────────────────────────────────────────────────────
+#  Accountant API — Analytics
+# ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/accountant/stats")
+async def api_accountant_stats(request: Request, account_id: int = None):
+    user = _require_user_api(request)
+    stats = db.get_trade_stats(user["id"], account_id=account_id)
+    wt    = db.get_withdrawal_totals(user["id"], account_id=account_id)
+    return {"trade_stats": stats, "withdrawal_totals": wt}
+
+
+@app.get("/api/accountant/calendar")
+async def api_accountant_calendar(
+    request: Request, year: int = None, month: int = None,
+    account_id: int = None
+):
+    from datetime import date
+    user = _require_user_api(request)
+    today = date.today()
+    y = year  or today.year
+    m = month or today.month
+    data = db.get_calendar_data(user["id"], y, m, account_id=account_id)
+    return {"year": y, "month": m, "days": data}
+
+
+@app.get("/api/accountant/series")
+async def api_pnl_series(request: Request, account_id: int = None, days: int = 90):
+    user = _require_user_api(request)
+    return db.get_cumulative_pnl_series(user["id"], account_id=account_id, limit_days=days)
+
+
+@app.post("/api/accountant/estimate-withdrawal")
+async def api_estimate_withdrawal(request: Request, body: WithdrawalCreate):
+    user = _require_user_api(request)
+    acct = db.get_trading_account(body.account_id, user["id"])
+    if not acct:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return _estimate_withdrawal(
+        acct["account_type"], body.gross_amount, body.tax_reserve_pct,
+        body.under_59_5, body.penalty_exception, body.qualified_distribution,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────

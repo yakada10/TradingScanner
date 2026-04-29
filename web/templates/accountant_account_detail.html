@@ -1,0 +1,425 @@
+{% extends "base.html" %}
+{% block title %}{{ account.name }} — tradetuu{% endblock %}
+{% block page_title %}{{ account.name }}{% endblock %}
+{% block page_sub %}{{ account_type_label }}{% if account.broker %} · {{ account.broker }}{% endif %}{% endblock %}
+
+{% block topbar_right %}
+<a href="/accountant/accounts" class="btn btn-sm">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+  All Accounts
+</a>
+<button class="btn btn-sm btn-primary" onclick="openEditModal()">Edit Account</button>
+{% endblock %}
+
+{% block content %}
+<div class="page-content">
+
+  <!-- Sub-nav -->
+  <div class="sub-nav">
+    <a href="/accountant/trades" class="sub-nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Trades
+    </a>
+    <a href="/accountant/calendar" class="sub-nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Calendar
+    </a>
+    <a href="/accountant/accounts" class="sub-nav-link active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      Accounts
+    </a>
+    <a href="/accountant/withdrawals" class="sub-nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Withdrawals
+    </a>
+  </div>
+
+  <!-- Account header card -->
+  <div class="card" style="margin-bottom:20px;padding:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="width:44px;height:44px;border-radius:10px;background:var(--accent-dim);color:var(--accent-h);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0;">
+          {{ account.name[0].upper() }}
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:700;color:var(--text);">{{ account.name }}</div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:2px;">
+            {% if account.broker %}{{ account.broker }} · {% endif %}
+            {% if account.is_active == -1 %}<span style="color:var(--avoid);">Archived</span>
+            {% elif account.is_active == 0 %}<span style="color:var(--text-dim);">Inactive</span>
+            {% else %}<span style="color:var(--ideal);">Active</span>{% endif %}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="acct-badge {{ account.account_type }}">{{ account_type_label }}</span>
+        <span style="font-size:12px;color:var(--text-dim);">Tax reserve: {{ account.default_tax_reserve_pct | int }}%</span>
+        {% if account.starting_balance %}
+        <span style="font-size:12px;color:var(--text-dim);">Starting: ${{ "{:,.0f}".format(account.starting_balance) }}</span>
+        {% endif %}
+      </div>
+    </div>
+    {% if account.notes %}
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--text-muted);">{{ account.notes }}</div>
+    {% endif %}
+  </div>
+
+  <!-- KPI row -->
+  <div class="kpi-grid" style="margin-bottom:20px;">
+    {% set pnl_cls = 'ideal' if stats.total_pnl > 0 else ('avoid' if stats.total_pnl < 0 else 'neutral') %}
+    <div class="kpi-card {{ pnl_cls }}">
+      <div class="kpi-label">Total P&amp;L</div>
+      <div class="kpi-value" style="font-size:22px;">
+        {{ "${:,.2f}".format(stats.total_pnl) if stats.total_pnl >= 0 else "-${:,.2f}".format(stats.total_pnl|abs) }}
+      </div>
+      <div class="kpi-sub">{{ stats.total_trades }} trades</div>
+    </div>
+    <div class="kpi-card neutral">
+      <div class="kpi-label">Avg Trade</div>
+      <div class="kpi-value" style="font-size:22px;color:{% if stats.avg_trade_pnl >= 0 %}var(--ideal){% else %}var(--avoid){% endif %};">
+        {{ "${:,.2f}".format(stats.avg_trade_pnl) if stats.avg_trade_pnl >= 0 else "-${:,.2f}".format(stats.avg_trade_pnl|abs) }}
+      </div>
+      <div class="kpi-sub">{{ stats.trading_days }} trading days</div>
+    </div>
+    <div class="kpi-card ideal">
+      <div class="kpi-label">Best Day</div>
+      <div class="kpi-value" style="font-size:22px;">${{ "{:,.2f}".format(stats.best_day) }}</div>
+      <div class="kpi-sub">{{ stats.win_count }}W / {{ stats.loss_count }}L trades</div>
+    </div>
+    <div class="kpi-card avoid">
+      <div class="kpi-label">Worst Day</div>
+      <div class="kpi-value" style="font-size:22px;">
+        {{ "${:,.2f}".format(stats.worst_day) if stats.worst_day >= 0 else "-${:,.2f}".format(stats.worst_day|abs) }}
+      </div>
+      <div class="kpi-sub">All-time worst trading day</div>
+    </div>
+  </div>
+
+  <!-- Withdrawal summary (if any) -->
+  {% if wt.count > 0 %}
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Gross Withdrawn</div>
+      <div style="font-size:16px;font-weight:700;font-family:'SF Mono',monospace;">${{ "{:,.0f}".format(wt.total_gross) }}</div>
+    </div>
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Tax Reserved</div>
+      <div style="font-size:16px;font-weight:700;font-family:'SF Mono',monospace;color:var(--watchlist);">${{ "{:,.0f}".format(wt.total_reserved) }}</div>
+    </div>
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Est. Penalties</div>
+      <div style="font-size:16px;font-weight:700;font-family:'SF Mono',monospace;color:var(--avoid);">${{ "{:,.0f}".format(wt.total_penalty) }}</div>
+    </div>
+    <div class="card" style="padding:14px 16px;">
+      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Net To Owner</div>
+      <div style="font-size:16px;font-weight:700;font-family:'SF Mono',monospace;color:var(--ideal);">${{ "{:,.0f}".format(wt.total_net) }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Cumulative P&L chart -->
+  {% if stats.total_trades > 0 %}
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+      <div class="card-title">Cumulative P&amp;L</div>
+      <div class="card-sub" id="chartSubLabel">Last 90 trading days</div>
+    </div>
+    <div class="card-body" style="padding:16px 20px;">
+      <div class="chart-wrap" style="padding:12px;">
+        <svg id="pnlChart" height="160" viewBox="0 0 800 160" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="rgba(99,102,241,0.3)"/>
+              <stop offset="100%" stop-color="rgba(99,102,241,0)"/>
+            </linearGradient>
+          </defs>
+          <text x="400" y="90" text-anchor="middle" fill="var(--text-dim)" font-size="12">Loading chart…</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Recent trades table -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+      <div class="card-title">Recent Trades</div>
+      <a href="/accountant/trades?account={{ account.id }}" class="btn btn-sm">View all</a>
+    </div>
+    <div class="table-scroll" id="recentTradesWrap">
+      <table class="acct-table">
+        <thead>
+          <tr>
+            <th>Date</th><th>Ticker</th><th>Side</th>
+            <th>Gross P&L</th><th>Fees</th><th>Net P&L</th>
+            <th>Strategy</th><th>Notes</th>
+          </tr>
+        </thead>
+        <tbody id="recentTradesTbody">
+          <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-dim);">
+            <span class="spinner"></span>
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="recentTradesEmpty" class="empty-state" style="display:none;padding:40px 24px;">
+      <p>No trades logged for this account yet.</p>
+      <a href="/accountant/trades" class="btn btn-primary btn-sm">Log a trade</a>
+    </div>
+  </div>
+
+  <!-- Withdrawal history -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Withdrawal History</div>
+      <a href="/accountant/withdrawals" class="btn btn-sm">View all</a>
+    </div>
+    <div class="table-scroll" id="withdrawalsWrap">
+      <table class="acct-table">
+        <thead>
+          <tr>
+            <th>Date</th><th>Gross Amount</th><th>Tax Reserve</th>
+            <th>Est. Tax</th><th>Est. Penalty</th><th>Net To Owner</th>
+            <th>Type</th><th>Notes</th>
+          </tr>
+        </thead>
+        <tbody id="withdrawalsTbody">
+          <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-dim);">
+            <span class="spinner"></span>
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="withdrawalsEmpty" class="empty-state" style="display:none;padding:40px 24px;">
+      <p>No withdrawals recorded for this account.</p>
+    </div>
+  </div>
+
+</div><!-- /page-content -->
+
+<!-- ── Edit Account Modal ──────────────────────────────────────── -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <div class="modal-title">Edit Account</div>
+      <button class="modal-close" onclick="closeEditModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row" style="margin-bottom:16px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Account Name *</label>
+          <input type="text" class="form-input" id="ef_name" value="{{ account.name }}">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Broker / Platform</label>
+          <input type="text" class="form-input" id="ef_broker" value="{{ account.broker or '' }}">
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:16px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Account Type</label>
+          <select class="form-select" id="ef_account_type">
+            {% for k, v in account_types.items() %}
+            <option value="{{ k }}" {% if account.account_type == k %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="ef_is_active">
+            <option value="1" {% if account.is_active >= 1 %}selected{% endif %}>Active</option>
+            <option value="0" {% if account.is_active == 0 %}selected{% endif %}>Inactive</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:16px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Starting Balance ($)</label>
+          <input type="number" class="form-input" id="ef_starting_balance" value="{{ account.starting_balance or '' }}">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Default Tax Reserve %</label>
+          <input type="number" class="form-input" id="ef_tax_reserve" value="{{ account.default_tax_reserve_pct }}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="ef_acct_notes">{{ account.notes or '' }}</textarea>
+      </div>
+      <div id="editFormError" class="form-error" style="display:none;margin-top:8px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeEditModal()">Cancel</button>
+      <button class="btn btn-primary" id="editSubmitBtn" onclick="submitEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ACCT_ID = {{ account.id }};
+const SERIES_DATA = {{ series_json | safe }};
+
+// ── Chart ───────────────────────────────────────────────────────
+function drawChart(data) {
+  if (!data || data.length < 2) {
+    document.getElementById('pnlChart').innerHTML =
+      '<text x="400" y="90" text-anchor="middle" fill="var(--text-dim)" font-size="12">Not enough data for chart yet.</text>';
+    return;
+  }
+  const W = 800, H = 160, PAD = 10;
+  const values = data.map(d => d.cumulative_pnl);
+  const minV = Math.min(0, ...values);
+  const maxV = Math.max(0, ...values);
+  const range = maxV - minV || 1;
+  const toY = v => PAD + ((maxV - v) / range) * (H - 2*PAD);
+  const toX = i => (i / (data.length - 1)) * W;
+  const zeroY = toY(0);
+
+  // Build path
+  let pathD = `M ${toX(0)},${toY(values[0])}`;
+  for (let i=1; i<values.length; i++) {
+    pathD += ` L ${toX(i)},${toY(values[i])}`;
+  }
+  const areaD = pathD + ` L ${toX(values.length-1)},${zeroY} L 0,${zeroY} Z`;
+
+  const isPositive = values[values.length-1] >= 0;
+  const lineColor = isPositive ? 'var(--accent)' : 'var(--avoid)';
+  const gradColor = isPositive ? 'rgba(99,102,241,' : 'rgba(239,68,68,';
+
+  const svg = document.getElementById('pnlChart');
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="cg2" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${gradColor}0.25)"/>
+        <stop offset="100%" stop-color="${gradColor}0)"/>
+      </linearGradient>
+    </defs>
+    <line x1="0" y1="${zeroY}" x2="${W}" y2="${zeroY}" class="chart-zero-line"/>
+    <path d="${areaD}" fill="url(#cg2)" opacity="0.6"/>
+    <path d="${pathD}" stroke="${lineColor}" stroke-width="2" fill="none"/>
+  `;
+  document.getElementById('chartSubLabel').textContent = `${data.length} trading days`;
+}
+
+// ── Load trades ─────────────────────────────────────────────────
+async function loadRecentTrades() {
+  const res = await apiFetch(`/api/accountant/trades?account_id=${ACCT_ID}&limit=20`);
+  if (!res) return;
+  const trades = await res.json();
+  const tbody = document.getElementById('recentTradesTbody');
+  const empty = document.getElementById('recentTradesEmpty');
+  const wrap  = document.getElementById('recentTradesWrap');
+  if (!trades.length) {
+    wrap.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  tbody.innerHTML = trades.map(t => {
+    const pnl = v => {
+      const n = parseFloat(v)||0;
+      const abs = '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+      if (n>0) return `<span class="pnl-pos">+${abs}</span>`;
+      if (n<0) return `<span class="pnl-neg">-${abs}</span>`;
+      return `<span class="pnl-zero">$0.00</span>`;
+    };
+    const side = t.side ? `<span style="font-size:11px;padding:2px 5px;border-radius:3px;background:${t.side==='long'?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)'};color:${t.side==='long'?'var(--ideal)':'var(--avoid)'};">${t.side.toUpperCase()}</span>` : '—';
+    return `<tr>
+      <td class="mono dim">${(t.trade_date||'').slice(0,10)}</td>
+      <td><span class="mono" style="font-weight:700;">${escHtml(t.ticker)}</span></td>
+      <td>${side}</td>
+      <td class="mono">${pnl(t.gross_pnl)}</td>
+      <td class="mono dim">${t.fees?'$'+parseFloat(t.fees).toFixed(2):'—'}</td>
+      <td class="mono">${pnl(t.net_pnl)}</td>
+      <td style="font-size:11px;color:var(--text-dim);">${escHtml(t.strategy_tag||'—')}</td>
+      <td style="font-size:11px;color:var(--text-dim);max-width:160px;">${escHtml((t.notes||'').slice(0,50))}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadWithdrawals() {
+  const res = await apiFetch(`/api/accountant/withdrawals?account_id=${ACCT_ID}&limit=20`);
+  if (!res) return;
+  const items = await res.json();
+  const tbody = document.getElementById('withdrawalsTbody');
+  const empty = document.getElementById('withdrawalsEmpty');
+  const wrap  = document.getElementById('withdrawalsWrap');
+  if (!items.length) {
+    wrap.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  tbody.innerHTML = items.map(w => {
+    const fmtUSD = v => '$' + parseFloat(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    return `<tr>
+      <td class="mono dim">${(w.withdrawal_date||'').slice(0,10)}</td>
+      <td class="mono">${fmtUSD(w.gross_amount)}</td>
+      <td class="mono dim">${parseFloat(w.tax_reserve_pct||0).toFixed(1)}%</td>
+      <td class="mono" style="color:var(--watchlist);">${fmtUSD(w.estimated_tax)}</td>
+      <td class="mono" style="color:${parseFloat(w.estimated_penalty)>0?'var(--avoid)':'var(--text-dim)'};">${fmtUSD(w.estimated_penalty)}</td>
+      <td class="mono pnl-pos">${fmtUSD(w.net_to_owner)}</td>
+      <td style="font-size:11px;color:var(--text-dim);">${escHtml(w.distribution_type||'—')}</td>
+      <td style="font-size:11px;color:var(--text-dim);max-width:140px;">${escHtml((w.notes||'').slice(0,50))}</td>
+    </tr>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Edit modal ──────────────────────────────────────────────────
+function openEditModal() {
+  document.getElementById('editFormError').style.display = 'none';
+  document.getElementById('editModal').classList.add('open');
+}
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('open');
+}
+async function submitEdit() {
+  const btn = document.getElementById('editSubmitBtn');
+  const errEl = document.getElementById('editFormError');
+  errEl.style.display = 'none';
+  const name = document.getElementById('ef_name').value.trim();
+  if (!name) { errEl.textContent = 'Name required'; errEl.style.display='block'; return; }
+  const payload = {
+    name,
+    broker:                  document.getElementById('ef_broker').value.trim(),
+    account_type:            document.getElementById('ef_account_type').value,
+    is_active:               document.getElementById('ef_is_active').value === '1',
+    starting_balance:        parseFloat(document.getElementById('ef_starting_balance').value)||0,
+    default_tax_reserve_pct: parseFloat(document.getElementById('ef_tax_reserve').value)||0,
+    notes:                   document.getElementById('ef_acct_notes').value.trim(),
+  };
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  const res = await apiFetch(`/api/accountant/accounts/${ACCT_ID}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload),
+  });
+  btn.disabled = false;
+  btn.textContent = 'Save Changes';
+  if (!res || !res.ok) {
+    const e = await (res?res.json().catch(()=>({})):{});
+    errEl.textContent = e.detail || 'Failed to save.';
+    errEl.style.display = 'block';
+    return;
+  }
+  closeEditModal();
+  toast('Account updated.', 'success');
+  setTimeout(() => location.reload(), 600);
+}
+document.getElementById('editModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeEditModal();
+});
+
+// ── Init ────────────────────────────────────────────────────────
+drawChart(SERIES_DATA);
+loadRecentTrades();
+loadWithdrawals();
+</script>
+{% endblock %}
