@@ -331,15 +331,23 @@ async def dashboard_page(request: Request):
     except Exception as exc:
         log.error("dashboard accounting error: %s", exc, exc_info=True)
         acct_data = _EMPTY_ACCT
-    return templates.TemplateResponse("dashboard.html", {
-        "request":      request,
-        "current_user": current_user,
-        "active_page":  "dashboard",
-        "stats":        stats,
-        "recent_jobs":  recent_jobs,
-        "acct":         acct_data,
-        "account_types": ACCOUNT_TYPES,
-    })
+    try:
+        return templates.TemplateResponse("dashboard.html", {
+            "request":      request,
+            "current_user": current_user,
+            "active_page":  "dashboard",
+            "stats":        stats,
+            "recent_jobs":  recent_jobs,
+            "acct":         acct_data,
+            "account_types": ACCOUNT_TYPES,
+        })
+    except Exception as exc:
+        import traceback
+        log.error("dashboard template error: %s", exc, exc_info=True)
+        return JSONResponse(
+            {"template_error": str(exc), "traceback": traceback.format_exc()},
+            status_code=500,
+        )
 
 
 @app.get("/debug/check")
