@@ -189,7 +189,7 @@ async def root(request: Request):
 async def login_page(request: Request):
     if get_current_user(request):
         return RedirectResponse(url="/dashboard", status_code=303)
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html", {})
 
 
 @app.post("/login", response_class=HTMLResponse)
@@ -200,8 +200,7 @@ async def login_post(
 ):
     user_row = db.get_user_by_username(username.strip())
     if not user_row or not verify_password(password, user_row["hashed_password"]):
-        return templates.TemplateResponse("login.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "login.html", {
             "error": "Invalid username or password",
             "username": username,
         }, status_code=401)
@@ -221,8 +220,7 @@ def _signup_enabled() -> bool:
 
 
 def _signup_closed_response(request: Request):
-    return templates.TemplateResponse("login.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "login.html", {
         "error": "Account registration is currently closed.",
     }, status_code=403)
 
@@ -233,7 +231,7 @@ async def signup_page(request: Request):
         return _signup_closed_response(request)
     if get_current_user(request):
         return RedirectResponse(url="/dashboard", status_code=303)
-    return templates.TemplateResponse("signup.html", {"request": request})
+    return templates.TemplateResponse(request, "signup.html", {})
 
 
 @app.post("/signup", response_class=HTMLResponse)
@@ -251,8 +249,7 @@ async def signup_post(
     email = email.strip() or None
 
     def _err(msg):
-        return templates.TemplateResponse("signup.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "signup.html", {
             "error": msg,
             "username": username,
             "email": email or "",
@@ -269,8 +266,7 @@ async def signup_post(
 
     db.create_user(username, hash_password(password), email)
     log.info("New user registered: %s", username)
-    return templates.TemplateResponse("login.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "login.html", {
         "success": "Account created! Sign in below.",
     })
 
@@ -332,8 +328,7 @@ async def dashboard_page(request: Request):
         log.error("dashboard accounting error: %s", exc, exc_info=True)
         acct_data = _EMPTY_ACCT
     try:
-        return templates.TemplateResponse("dashboard.html", {
-            "request":      request,
+        return templates.TemplateResponse(request, "dashboard.html", {
             "current_user": current_user,
             "active_page":  "dashboard",
             "stats":        stats,
@@ -386,8 +381,7 @@ async def debug_check():
 @app.get("/scanner", response_class=HTMLResponse)
 async def scanner_page(request: Request):
     current_user = _require_user(request)
-    return templates.TemplateResponse("scanner.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "scanner.html", {
         "current_user": current_user,
         "active_page": "scanner",
     })
@@ -602,8 +596,7 @@ async def accountant_trades_page(request: Request):
     current_user = _require_user(request)
     accounts = db.get_trading_accounts(current_user["id"])
     stats    = db.get_trade_stats(current_user["id"])
-    return templates.TemplateResponse("accountant_trades.html", {
-        "request":      request,
+    return templates.TemplateResponse(request, "accountant_trades.html", {
         "current_user": current_user,
         "active_page":  "accountant",
         "active_sub":   "trades",
@@ -619,8 +612,7 @@ async def accountant_trades_page(request: Request):
 async def accountant_calendar_page(request: Request):
     current_user = _require_user(request)
     accounts = db.get_trading_accounts(current_user["id"])
-    return templates.TemplateResponse("accountant_calendar.html", {
-        "request":      request,
+    return templates.TemplateResponse(request, "accountant_calendar.html", {
         "current_user": current_user,
         "active_page":  "accountant",
         "active_sub":   "calendar",
@@ -632,8 +624,7 @@ async def accountant_calendar_page(request: Request):
 async def accountant_accounts_page(request: Request):
     current_user = _require_user(request)
     accounts = db.get_trading_accounts(current_user["id"], include_archived=True)
-    return templates.TemplateResponse("accountant_accounts.html", {
-        "request":       request,
+    return templates.TemplateResponse(request, "accountant_accounts.html", {
         "current_user":  current_user,
         "active_page":   "accountant",
         "active_sub":    "accounts",
@@ -651,8 +642,7 @@ async def accountant_account_detail_page(request: Request, account_id: int):
     stats   = db.get_trade_stats(current_user["id"], account_id=account_id)
     wt      = db.get_withdrawal_totals(current_user["id"], account_id=account_id)
     series  = db.get_cumulative_pnl_series(current_user["id"], account_id=account_id)
-    return templates.TemplateResponse("accountant_account_detail.html", {
-        "request":       request,
+    return templates.TemplateResponse(request, "accountant_account_detail.html", {
         "current_user":  current_user,
         "active_page":   "accountant",
         "active_sub":    "accounts",
@@ -670,8 +660,7 @@ async def accountant_withdrawals_page(request: Request):
     current_user = _require_user(request)
     accounts = db.get_trading_accounts(current_user["id"])
     wt       = db.get_withdrawal_totals(current_user["id"])
-    return templates.TemplateResponse("accountant_withdrawals.html", {
-        "request":            request,
+    return templates.TemplateResponse(request, "accountant_withdrawals.html", {
         "current_user":       current_user,
         "active_page":        "accountant",
         "active_sub":         "withdrawals",
