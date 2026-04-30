@@ -305,15 +305,31 @@ _EMPTY_ACCT = {
 }
 
 
+_EMPTY_STATS = {
+    "total_scans": 0,
+    "latest_job": None,
+    "classification_counts": {"IDEAL_FIT": 0, "TRADABLE": 0, "WATCHLIST_ONLY": 0, "AVOID": 0},
+    "top_results": [],
+}
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     current_user = _require_user(request)
-    stats = db.get_dashboard_stats()
-    recent_jobs = db.list_recent_jobs(limit=8)
+    try:
+        stats = db.get_dashboard_stats()
+    except Exception as exc:
+        log.error("dashboard get_dashboard_stats error: %s", exc, exc_info=True)
+        stats = _EMPTY_STATS
+    try:
+        recent_jobs = db.list_recent_jobs(limit=8)
+    except Exception as exc:
+        log.error("dashboard list_recent_jobs error: %s", exc, exc_info=True)
+        recent_jobs = []
     try:
         acct_data = db.get_accounting_dashboard_data(current_user["id"])
     except Exception as exc:
-        log.error("Accounting dashboard data error: %s", exc, exc_info=True)
+        log.error("dashboard accounting error: %s", exc, exc_info=True)
         acct_data = _EMPTY_ACCT
     return templates.TemplateResponse("dashboard.html", {
         "request":      request,
@@ -324,6 +340,39 @@ async def dashboard_page(request: Request):
         "acct":         acct_data,
         "account_types": ACCOUNT_TYPES,
     })
+
+
+@app.get("/debug/check")
+async def debug_check():
+    """Temporary diagnostic endpoint — remove after debugging."""
+    import traceback
+    results: dict = {}
+    try:
+        db.get_dashboard_stats()
+        results["get_dashboard_stats"] = "OK"
+    except Exception:
+        results["get_dashboard_stats"] = traceback.format_exc()
+    try:
+        db.list_recent_jobs(limit=1)
+        results["list_recent_jobs"] = "OK"
+    except Exception:
+        results["list_recent_jobs"] = traceback.format_exc()
+    try:
+        db.get_accounting_dashboard_data(1)
+        results["get_accounting_dashboard_data"] = "OK"
+    except Exception:
+        results["get_accounting_dashboard_data"] = traceback.format_exc()
+    try:
+        db.get_trade_stats(1)
+        results["get_trade_stats"] = "OK"
+    except Exception:
+        results["get_trade_stats"] = traceback.format_exc()
+    try:
+        db.get_withdrawal_totals(1)
+        results["get_withdrawal_totals"] = "OK"
+    except Exception:
+        results["get_withdrawal_totals"] = traceback.format_exc()
+    return results
 
 
 @app.get("/scanner", response_class=HTMLResponse)
