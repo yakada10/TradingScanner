@@ -53,7 +53,8 @@
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span class="acct-badge {{ account.account_type }}">{{ account_type_label }}</span>
-        <span style="font-size:12px;color:var(--text-dim);">Tax reserve: {{ account.default_tax_reserve_pct | int }}%</span>
+        {% set tr = account.default_tax_reserve_pct | int %}
+        <span class="tax-badge {% if tr == 0 %}zero{% endif %}">{{ tr }}% est. tax</span>
         {% if account.starting_balance %}
         <span style="font-size:12px;color:var(--text-dim);">Starting: ${{ "{:,.0f}".format(account.starting_balance) }}</span>
         {% endif %}
@@ -178,13 +179,12 @@
       <table class="acct-table">
         <thead>
           <tr>
-            <th>Date</th><th>Gross Amount</th><th>Tax Reserve</th>
-            <th>Est. Tax</th><th>Est. Penalty</th><th>Net To Owner</th>
-            <th>Type</th><th>Notes</th>
+            <th>Date</th><th>Gross Amount</th><th>Est. Tax</th>
+            <th>Est. Penalty</th><th>Net To Owner</th><th>Notes</th>
           </tr>
         </thead>
         <tbody id="withdrawalsTbody">
-          <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-dim);">
+          <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-dim);">
             <span class="spinner"></span>
           </td></tr>
         </tbody>
@@ -218,7 +218,7 @@
       <div class="form-row" style="margin-bottom:16px;">
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">Account Type</label>
-          <select class="form-select" id="ef_account_type">
+          <select class="form-select" id="ef_account_type" onchange="onEditTypeChange()">
             {% for k, v in account_types.items() %}
             <option value="{{ k }}" {% if account.account_type == k %}selected{% endif %}>{{ v }}</option>
             {% endfor %}
@@ -232,15 +232,10 @@
           </select>
         </div>
       </div>
-      <div class="form-row" style="margin-bottom:16px;">
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Starting Balance ($)</label>
-          <input type="number" class="form-input" id="ef_starting_balance" value="{{ account.starting_balance or '' }}">
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Default Tax Reserve %</label>
-          <input type="number" class="form-input" id="ef_tax_reserve" value="{{ account.default_tax_reserve_pct }}">
-        </div>
+      <div id="editTypeInfoStrip" class="type-info-strip" style="margin-bottom:16px;"></div>
+      <div class="form-group" style="margin-bottom:16px;">
+        <label class="form-label">Starting Balance ($)</label>
+        <input type="number" class="form-input" id="ef_starting_balance" value="{{ account.starting_balance or '' }}">
       </div>
       <div class="form-group">
         <label class="form-label">Notes</label>
@@ -356,12 +351,10 @@ async function loadWithdrawals() {
     return `<tr>
       <td class="mono dim">${(w.withdrawal_date||'').slice(0,10)}</td>
       <td class="mono">${fmtUSD(w.gross_amount)}</td>
-      <td class="mono dim">${parseFloat(w.tax_reserve_pct||0).toFixed(1)}%</td>
       <td class="mono" style="color:var(--watchlist);">${fmtUSD(w.estimated_tax)}</td>
       <td class="mono" style="color:${parseFloat(w.estimated_penalty)>0?'var(--avoid)':'var(--text-dim)'};">${fmtUSD(w.estimated_penalty)}</td>
       <td class="mono pnl-pos">${fmtUSD(w.net_to_owner)}</td>
-      <td style="font-size:11px;color:var(--text-dim);">${escHtml(w.distribution_type||'—')}</td>
-      <td style="font-size:11px;color:var(--text-dim);max-width:140px;">${escHtml((w.notes||'').slice(0,50))}</td>
+      <td style="font-size:11px;color:var(--text-dim);max-width:160px;">${escHtml((w.notes||'').slice(0,60))}</td>
     </tr>`;
   }).join('');
 }
@@ -372,8 +365,26 @@ function escHtml(s) {
 }
 
 // ── Edit modal ──────────────────────────────────────────────────
+const _EDIT_TYPE_TAX = {taxable:30,futures:25,roth_ira:0,traditional_ira:25,rollover_ira:25,prop:30,paper:0,other:25};
+const _EDIT_TYPE_INFO = {
+  taxable:         'Taxable brokerage — <b>30% planning estimate</b> applied to withdrawals.',
+  roth_ira:        'Roth IRA — qualified distributions are tax-free. <b>0% tax</b> applied automatically.',
+  traditional_ira: 'Traditional IRA — pre-tax contributions; distributions are ordinary income. <b>25% planning estimate</b>.',
+  rollover_ira:    'Rollover IRA — treated like a Traditional IRA. <b>25% planning estimate</b>.',
+  futures:         'Futures (Section 1256) — 60/40 blended rate. <b>25% planning estimate</b>.',
+  prop:            'Prop / Evaluation — profit distributions may be contractor income. <b>30% planning estimate</b>.',
+  paper:           'Paper / Demo — no real tax consequences. <b>0% tax</b>.',
+  other:           'Custom account — <b>25% planning estimate</b> applied.',
+};
+function onEditTypeChange() {
+  const t = document.getElementById('ef_account_type').value;
+  const strip = document.getElementById('editTypeInfoStrip');
+  const rate = _EDIT_TYPE_TAX[t] ?? 25;
+  strip.innerHTML = `<div><b>Est. tax rate: ${rate}%</b> (auto-applied)</div><div style="margin-top:3px;">${_EDIT_TYPE_INFO[t]||''}</div>`;
+}
 function openEditModal() {
   document.getElementById('editFormError').style.display = 'none';
+  onEditTypeChange();
   document.getElementById('editModal').classList.add('open');
 }
 function closeEditModal() {
@@ -387,12 +398,11 @@ async function submitEdit() {
   if (!name) { errEl.textContent = 'Name required'; errEl.style.display='block'; return; }
   const payload = {
     name,
-    broker:                  document.getElementById('ef_broker').value.trim(),
-    account_type:            document.getElementById('ef_account_type').value,
-    is_active:               document.getElementById('ef_is_active').value === '1',
-    starting_balance:        parseFloat(document.getElementById('ef_starting_balance').value)||0,
-    default_tax_reserve_pct: parseFloat(document.getElementById('ef_tax_reserve').value)||0,
-    notes:                   document.getElementById('ef_acct_notes').value.trim(),
+    broker:           document.getElementById('ef_broker').value.trim(),
+    account_type:     document.getElementById('ef_account_type').value,
+    is_active:        document.getElementById('ef_is_active').value === '1',
+    starting_balance: parseFloat(document.getElementById('ef_starting_balance').value)||0,
+    notes:            document.getElementById('ef_acct_notes').value.trim(),
   };
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>';

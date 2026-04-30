@@ -36,7 +36,6 @@
   {% if not accounts %}
   <div class="card">
     <div class="empty-state" style="padding:64px 24px;">
-      <div class="icon">💳</div>
       <h3>No accounts yet</h3>
       <p>Create your first trading account to start logging trades. You can have multiple accounts for different brokers, IRAs, and account types.</p>
       <button class="btn btn-primary" onclick="openAccountModal()">Create your first account</button>
@@ -44,17 +43,16 @@
   </div>
   {% else %}
 
-  <!-- Accounts grid -->
   <div class="accounts-grid" id="accountsGrid">
     {% for acct in accounts %}
     <div class="account-card {% if acct.is_active == -1 %}archived{% endif %}"
          onclick="window.location='/accountant/accounts/{{ acct.id }}'">
       <div class="account-card-header">
-        <div>
+        <div style="min-width:0;">
           <div class="account-card-name">{{ acct.name }}</div>
           <div class="account-card-broker">{{ acct.broker or 'No broker specified' }}</div>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
           <span class="acct-badge {{ acct.account_type }}">
             {{ account_types.get(acct.account_type, acct.account_type) }}
           </span>
@@ -78,8 +76,11 @@
           <div class="account-stat-value" style="font-size:15px;color:var(--text);">{{ acct.trade_count }}</div>
         </div>
         <div>
-          <div class="account-stat-label">Tax Reserve %</div>
-          <div class="account-stat-value" style="font-size:15px;color:var(--text-muted);">{{ acct.default_tax_reserve_pct | int }}%</div>
+          <div class="account-stat-label">Est. Tax Rate</div>
+          <div class="account-stat-value" style="font-size:13px;">
+            {% set tr = acct.default_tax_reserve_pct | int %}
+            <span class="tax-badge {% if tr == 0 %}zero{% endif %}">{{ tr }}% auto</span>
+          </div>
         </div>
         <div>
           <div class="account-stat-label">Starting Balance</div>
@@ -107,7 +108,7 @@
 
 <!-- ── Account Modal ──────────────────────────────────────────── -->
 <div class="modal-overlay" id="accountModal">
-  <div class="modal" style="max-width:520px;">
+  <div class="modal" style="max-width:500px;">
     <div class="modal-header">
       <div class="modal-title" id="acctModalTitle">New Account</div>
       <button class="modal-close" onclick="closeAccountModal()">×</button>
@@ -118,7 +119,7 @@
       <div class="form-row" style="margin-bottom:16px;">
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">Account Name *</label>
-          <input type="text" class="form-input" id="f_name" placeholder="e.g. TD Ameritrade Main">
+          <input type="text" class="form-input" id="f_name" placeholder="e.g. Schwab Main, Roth IRA">
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">Broker / Platform</label>
@@ -144,27 +145,21 @@
         </div>
       </div>
 
-      <div class="form-row" style="margin-bottom:16px;">
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Starting Balance ($)</label>
-          <input type="number" class="form-input" id="f_starting_balance" step="0.01" placeholder="0.00">
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Default Tax Reserve %</label>
-          <input type="number" class="form-input" id="f_tax_reserve" step="0.1" min="0" max="100" placeholder="30">
-          <div class="form-hint" id="reserveHint">Used to estimate tax on distributions.</div>
-        </div>
+      <!-- Type info strip — updates on type change -->
+      <div id="typeInfoStrip" class="type-info-strip" style="margin-bottom:16px;"></div>
+
+      <div class="form-group" style="margin-bottom:16px;">
+        <label class="form-label">Starting Balance ($)</label>
+        <input type="number" class="form-input" id="f_starting_balance" step="0.01" placeholder="0.00">
+        <div class="form-hint">Used to calculate account growth. Optional.</div>
       </div>
 
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:0;">
         <label class="form-label">Notes</label>
-        <textarea class="form-textarea" id="f_acct_notes" placeholder="Account purpose, login notes, strategy focus…"></textarea>
+        <textarea class="form-textarea" id="f_acct_notes" placeholder="Account purpose, login notes, strategy focus…" rows="3"></textarea>
       </div>
 
-      <!-- Type-specific info box -->
-      <div id="typeInfoBox" style="display:none;margin-top:12px;" class="disclaimer-box"></div>
-
-      <div id="acctFormError" class="form-error" style="display:none;margin-top:8px;"></div>
+      <div id="acctFormError" class="form-error" style="display:none;margin-top:10px;"></div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeAccountModal()">Cancel</button>
@@ -173,7 +168,7 @@
   </div>
 </div>
 
-<!-- ── Archive confirm modal ─────────────────────────────────── -->
+<!-- ── Archive confirm ───────────────────────────────────────── -->
 <div class="modal-overlay" id="archiveModal">
   <div class="modal" style="max-width:420px;">
     <div class="modal-header">
@@ -197,44 +192,37 @@
 {% block scripts %}
 <script>
 const ACCTS = {{ accounts | tojson }};
+
+const TYPE_TAX_RATES = {
+  taxable:          30,
+  futures:          25,
+  roth_ira:          0,
+  traditional_ira:  25,
+  rollover_ira:     25,
+  prop:             30,
+  paper:             0,
+  other:            25,
+};
+
 const TYPE_INFO = {
-  taxable:         'Taxable brokerage: gains/losses are generally taxable. Tax reserve % applies to estimated withdrawals.',
-  roth_ira:        'Roth IRA: qualified distributions are tax-free and penalty-free. Non-qualified distributions may incur tax and early-withdrawal penalty.',
-  traditional_ira: 'Traditional IRA: contributions are pre-tax. Distributions are ordinary income. Under-59½ distributions may incur a 10% penalty unless an exception applies.',
-  rollover_ira:    'Rollover IRA: treated like a Traditional IRA for distribution purposes. Pre-tax funds; distributions are ordinary income.',
-  futures:         'Futures account (Section 1256): generally subject to the 60/40 tax rule (60% long-term, 40% short-term). Tax reserve % is used for planning estimates.',
-  prop:            'Prop / Evaluation account: profit distributions may be treated as contractor income. Tax reserve % applies for planning estimates.',
-  paper:           'Paper / Demo account: no real money or real tax consequences. Useful for tracking performance metrics only.',
-  other:           'Custom account type: configure tax reserve % manually. Tax estimates use your specified reserve percentage.',
+  taxable:         'Taxable brokerage — gains are reportable income. <b>30% planning estimate</b> applied to withdrawals.',
+  roth_ira:        'Roth IRA — qualified distributions are tax-free. <b>0% tax</b> applied automatically; non-qualified distributions will show a separate estimate.',
+  traditional_ira: 'Traditional IRA — pre-tax contributions; distributions are ordinary income. <b>25% planning estimate</b> applied.',
+  rollover_ira:    'Rollover IRA — treated like a Traditional IRA. Pre-tax funds; <b>25% planning estimate</b> applied to distributions.',
+  futures:         'Futures (Section 1256) — 60/40 long/short-term blended rate. <b>25% planning estimate</b> applied.',
+  prop:            'Prop / Evaluation — profit distributions may be contractor income. <b>30% planning estimate</b> applied.',
+  paper:           'Paper / Demo — no real money or tax consequences. <b>0% tax</b> applied; for performance tracking only.',
+  other:           'Custom account — <b>25% planning estimate</b> applied by default.',
 };
 
 let archiveAcctId = null;
 
 function onTypeChange() {
-  const t = document.getElementById('f_account_type').value;
-  const box = document.getElementById('typeInfoBox');
-  const hint = document.getElementById('reserveHint');
-  if (TYPE_INFO[t]) {
-    box.textContent = TYPE_INFO[t];
-    box.style.display = 'block';
-  } else {
-    box.style.display = 'none';
-  }
-  // Roth IRA qualified → reserve = 0 default
-  if (t === 'roth_ira') {
-    if (!document.getElementById('acctId').value) {
-      document.getElementById('f_tax_reserve').value = '0';
-    }
-    hint.textContent = 'Qualified Roth distributions are tax-free. Set to 0 if you only expect qualified distributions.';
-  } else if (t === 'paper') {
-    document.getElementById('f_tax_reserve').value = '0';
-    hint.textContent = 'No tax implications for demo/paper accounts.';
-  } else {
-    hint.textContent = 'Used to estimate tax on distributions.';
-    if (!document.getElementById('acctId').value) {
-      document.getElementById('f_tax_reserve').value = '30';
-    }
-  }
+  const t    = document.getElementById('f_account_type').value;
+  const strip = document.getElementById('typeInfoStrip');
+  const rate  = TYPE_TAX_RATES[t] ?? 25;
+  const info  = TYPE_INFO[t] || '';
+  strip.innerHTML = `<div><b>Est. tax rate: ${rate}%</b> (auto-applied)</div><div style="margin-top:3px;">${info}</div>`;
 }
 
 function openAccountModal() {
@@ -246,7 +234,6 @@ function openAccountModal() {
   document.getElementById('f_account_type').value = 'taxable';
   document.getElementById('f_is_active').value = '1';
   document.getElementById('f_starting_balance').value = '';
-  document.getElementById('f_tax_reserve').value = '30';
   document.getElementById('f_acct_notes').value = '';
   document.getElementById('acctFormError').style.display = 'none';
   onTypeChange();
@@ -263,7 +250,6 @@ function openEditAccountModal(acct) {
   document.getElementById('f_account_type').value = acct.account_type || 'taxable';
   document.getElementById('f_is_active').value = acct.is_active >= 1 ? '1' : '0';
   document.getElementById('f_starting_balance').value = acct.starting_balance || '';
-  document.getElementById('f_tax_reserve').value = acct.default_tax_reserve_pct != null ? acct.default_tax_reserve_pct : '30';
   document.getElementById('f_acct_notes').value = acct.notes || '';
   document.getElementById('acctFormError').style.display = 'none';
   onTypeChange();
@@ -275,7 +261,7 @@ function closeAccountModal() {
 }
 
 async function submitAccount() {
-  const btn = document.getElementById('acctSubmitBtn');
+  const btn   = document.getElementById('acctSubmitBtn');
   const errEl = document.getElementById('acctFormError');
   errEl.style.display = 'none';
 
@@ -284,12 +270,11 @@ async function submitAccount() {
 
   const payload = {
     name,
-    broker:                  document.getElementById('f_broker').value.trim(),
-    account_type:            document.getElementById('f_account_type').value,
-    is_active:               document.getElementById('f_is_active').value === '1',
-    starting_balance:        parseFloat(document.getElementById('f_starting_balance').value) || 0,
-    default_tax_reserve_pct: parseFloat(document.getElementById('f_tax_reserve').value) || 0,
-    notes:                   document.getElementById('f_acct_notes').value.trim(),
+    broker:           document.getElementById('f_broker').value.trim(),
+    account_type:     document.getElementById('f_account_type').value,
+    is_active:        document.getElementById('f_is_active').value === '1',
+    starting_balance: parseFloat(document.getElementById('f_starting_balance').value) || 0,
+    notes:            document.getElementById('f_acct_notes').value.trim(),
   };
 
   const acctId = document.getElementById('acctId').value;
@@ -308,7 +293,7 @@ async function submitAccount() {
   btn.textContent = isEdit ? 'Save Changes' : 'Create Account';
 
   if (!res || !res.ok) {
-    const err = await (res ? res.json().catch(()=>({detail:'Error'})) : {detail:'Request failed'});
+    const err = await (res ? res.json().catch(()=>({detail:'Error'})) : Promise.resolve({detail:'Request failed'}));
     showErr(err.detail || 'Failed to save account.');
     return;
   }
@@ -346,12 +331,10 @@ async function confirmArchive() {
   }
 }
 
-// Close modals on overlay click
-document.getElementById('accountModal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeAccountModal();
-});
-document.getElementById('archiveModal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeArchiveModal();
-});
+document.getElementById('accountModal').addEventListener('click', e => { if (e.target===e.currentTarget) closeAccountModal(); });
+document.getElementById('archiveModal').addEventListener('click', e => { if (e.target===e.currentTarget) closeArchiveModal(); });
+
+// Init type strip on page load (in case modal opened immediately)
+onTypeChange();
 </script>
 {% endblock %}

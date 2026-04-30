@@ -34,10 +34,8 @@
   </div>
 
   {% if not accounts %}
-  <!-- No accounts yet -->
   <div class="card">
     <div class="empty-state" style="padding:64px 24px;">
-      <div class="icon">📋</div>
       <h3>Create an account first</h3>
       <p>Set up a trading account before logging trades. This keeps your P&L organized by broker and account type.</p>
       <a href="/accountant/accounts" class="btn btn-primary">Set up an account</a>
@@ -81,10 +79,10 @@
     </div>
   </div>
 
-  <!-- Secondary stats row -->
+  <!-- Secondary stats -->
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
     <div class="card" style="padding:14px 16px;">
-      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Avg Daily P&L</div>
+      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Avg Daily P&amp;L</div>
       <div style="font-size:16px;font-weight:700;font-family:'SF Mono',monospace;color:{% if stats.avg_daily_pnl >= 0 %}var(--ideal){% else %}var(--avoid){% endif %};">
         {{ "${:,.2f}".format(stats.avg_daily_pnl) if stats.avg_daily_pnl >= 0 else "-${:,.2f}".format(stats.avg_daily_pnl|abs) }}
       </div>
@@ -100,7 +98,7 @@
       </div>
     </div>
     <div class="card" style="padding:14px 16px;">
-      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Win / Loss Trades</div>
+      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Win / Loss Days</div>
       <div style="font-size:16px;font-weight:700;">
         <span style="color:var(--ideal);">{{ stats.win_count }}W</span>
         <span style="color:var(--text-dim);font-weight:400;font-size:13px;"> / </span>
@@ -120,8 +118,8 @@
           <option value="{{ acct.id }}">{{ acct.name }}</option>
           {% endfor %}
         </select>
-        <input type="date" class="form-input" id="filterFrom" onchange="loadTrades()" placeholder="From">
-        <input type="date" class="form-input" id="filterTo" onchange="loadTrades()" placeholder="To">
+        <input type="date" class="form-input" id="filterFrom" onchange="loadTrades()">
+        <input type="date" class="form-input" id="filterTo" onchange="loadTrades()">
         <input type="text" class="form-input" id="filterTicker" oninput="loadTrades()" placeholder="Ticker…" style="width:100px;">
         <button class="btn btn-sm" onclick="clearFilters()">Clear</button>
       </div>
@@ -134,28 +132,25 @@
             <th>Date</th>
             <th>Ticker</th>
             <th>Account</th>
-            <th>Side</th>
-            <th>Gross P&L</th>
-            <th>Fees</th>
-            <th>Net P&L</th>
-            <th>Strategy</th>
+            <th>P&amp;L</th>
             <th>Notes</th>
             <th style="text-align:right;">Actions</th>
           </tr>
         </thead>
         <tbody id="tradesTbody">
-          <tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-dim);">
+          <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-dim);">
             <span class="spinner"></span> Loading trades…
           </td></tr>
         </tbody>
       </table>
     </div>
-    <div id="tradesEmpty" class="empty-state" style="display:none;padding:48px 24px;">
-      <div class="icon">📋</div>
-      <h3>No trades yet</h3>
-      <p>Log your first trade to start tracking your P&amp;L, build your journal, and view your performance calendar.</p>
+
+    <div id="tradesEmpty" class="empty-state" style="display:none;padding:56px 24px;">
+      <h3>No trades logged yet</h3>
+      <p>Log your first trade to start tracking your P&amp;L and build your performance journal.</p>
       <button class="btn btn-primary" onclick="openTradeModal()">Log a trade</button>
     </div>
+
     <div id="tradesTotalRow" style="display:none;padding:12px 20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
       <span style="font-size:12px;color:var(--text-dim);" id="tradesCountLabel"></span>
       <span style="font-size:13px;font-weight:600;font-family:'SF Mono',monospace;" id="tradesNetTotal"></span>
@@ -165,105 +160,48 @@
 
 </div><!-- /page-content -->
 
-<!-- ── Trade Modal ──────────────────────────────────────────────── -->
+<!-- ── Trade Modal (5 fields) ────────────────────────────────────── -->
 <div class="modal-overlay" id="tradeModal">
-  <div class="modal" style="max-width:600px;">
+  <div class="modal" style="max-width:480px;">
     <div class="modal-header">
       <div class="modal-title" id="tradeModalTitle">Log Trade</div>
       <button class="modal-close" onclick="closeTradeModal()">×</button>
     </div>
     <div class="modal-body">
       <input type="hidden" id="tradeId">
+
       <div class="form-row" style="margin-bottom:16px;">
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">Account *</label>
-          <select class="form-select" id="f_account_id" onchange="onAccountChange()">
+          <select class="form-select" id="f_account_id">
             {% for acct in accounts %}
             <option value="{{ acct.id }}" data-type="{{ acct.account_type }}">{{ acct.name }}</option>
             {% endfor %}
           </select>
         </div>
         <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Trade Date *</label>
+          <label class="form-label">Date *</label>
           <input type="date" class="form-input" id="f_trade_date">
         </div>
       </div>
 
       <div class="form-row" style="margin-bottom:16px;">
         <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Ticker / Symbol *</label>
-          <input type="text" class="form-input" id="f_ticker" placeholder="e.g. AAPL, NQ, ES" style="text-transform:uppercase;">
+          <label class="form-label">Ticker *</label>
+          <input type="text" class="form-input" id="f_ticker" placeholder="AAPL, NQ, ES…" style="text-transform:uppercase;">
         </div>
         <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Side</label>
-          <select class="form-select" id="f_side">
-            <option value="">— not specified —</option>
-            <option value="long">Long</option>
-            <option value="short">Short</option>
-          </select>
+          <label class="form-label">P&amp;L ($) *</label>
+          <input type="number" class="form-input" id="f_pnl" step="0.01" placeholder="0.00" style="font-weight:600;">
         </div>
       </div>
 
-      <div class="form-row" style="margin-bottom:16px;">
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Gross P&L ($) *</label>
-          <input type="number" class="form-input" id="f_gross_pnl" step="0.01" placeholder="0.00" oninput="recalcNet()">
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Fees / Commissions ($)</label>
-          <input type="number" class="form-input" id="f_fees" step="0.01" placeholder="0.00" oninput="recalcNet()">
-        </div>
-      </div>
-
-      <div class="form-row" style="margin-bottom:16px;">
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Net P&L ($)</label>
-          <input type="number" class="form-input" id="f_net_pnl" step="0.01" placeholder="Auto-calculated" style="font-weight:600;">
-          <div class="form-hint">Auto-calculated as Gross − Fees. Override if needed.</div>
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Quantity / Contracts</label>
-          <input type="number" class="form-input" id="f_quantity" step="0.01" placeholder="optional">
-        </div>
-      </div>
-
-      <div class="form-row" style="margin-bottom:16px;">
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Entry Price</label>
-          <input type="number" class="form-input" id="f_entry_price" step="0.0001" placeholder="optional">
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Exit Price</label>
-          <input type="number" class="form-input" id="f_exit_price" step="0.0001" placeholder="optional">
-        </div>
-      </div>
-
-      <div class="form-row" style="margin-bottom:16px;">
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Strategy / Setup</label>
-          <select class="form-select" id="f_strategy_tag">
-            <option value="">— none —</option>
-            {% for tag in strategy_tags %}
-            <option value="{{ tag }}">{{ tag }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Confidence / Emotion</label>
-          <select class="form-select" id="f_confidence_tag">
-            <option value="">— none —</option>
-            {% for tag in confidence_tags %}
-            <option value="{{ tag }}">{{ tag }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:0;">
         <label class="form-label">Notes</label>
-        <textarea class="form-textarea" id="f_notes" placeholder="Setup notes, mistakes, lessons learned…"></textarea>
+        <textarea class="form-textarea" id="f_notes" placeholder="Setup, mistakes, lessons learned…" rows="3"></textarea>
       </div>
-      <div id="tradeFormError" class="form-error" style="display:none;margin-top:8px;"></div>
+
+      <div id="tradeFormError" class="form-error" style="display:none;margin-top:10px;"></div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeTradeModal()">Cancel</button>
@@ -272,7 +210,7 @@
   </div>
 </div>
 
-<!-- ── Delete confirmation modal ──────────────────────────────── -->
+<!-- ── Delete confirmation ───────────────────────────────────────── -->
 <div class="modal-overlay" id="deleteModal">
   <div class="modal" style="max-width:420px;">
     <div class="modal-header">
@@ -280,11 +218,11 @@
       <button class="modal-close" onclick="closeDeleteModal()">×</button>
     </div>
     <div class="modal-body">
-      <p style="color:var(--text-muted);font-size:13px;">Are you sure you want to delete this trade? This cannot be undone.</p>
+      <p style="color:var(--text-muted);font-size:13px;">Delete this trade? This cannot be undone.</p>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeDeleteModal()">Cancel</button>
-      <button class="btn btn-danger" id="deleteConfirmBtn" onclick="confirmDelete()">Delete Trade</button>
+      <button class="btn btn-danger" id="deleteConfirmBtn" onclick="confirmDelete()">Delete</button>
     </div>
   </div>
 </div>
@@ -296,17 +234,14 @@
 const ACCOUNTS = {{ accounts | tojson }};
 let allTrades = [];
 let deleteTradeId = null;
+let _editingTrade = null;
 let loadDebounce = null;
 
-// ── Date helpers ────────────────────────────────────────────────
 function todayISO() {
   const d = new Date();
-  return d.getFullYear() + '-' +
-    String(d.getMonth()+1).padStart(2,'0') + '-' +
-    String(d.getDate()).padStart(2,'0');
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
-// ── Formatting ──────────────────────────────────────────────────
 function fmtPnl(v) {
   const n = parseFloat(v) || 0;
   const abs = Math.abs(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -314,16 +249,10 @@ function fmtPnl(v) {
   if (n < 0) return `<span class="pnl-neg">-$${abs}</span>`;
   return `<span class="pnl-zero">$0.00</span>`;
 }
-function fmtMoney(v) {
-  if (v == null || v === '') return '—';
-  return '$' + parseFloat(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-}
 
-// ── Net P&L auto-calculate ──────────────────────────────────────
-function recalcNet() {
-  const gross = parseFloat(document.getElementById('f_gross_pnl').value) || 0;
-  const fees  = parseFloat(document.getElementById('f_fees').value) || 0;
-  document.getElementById('f_net_pnl').value = (gross - fees).toFixed(2);
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Load trades ─────────────────────────────────────────────────
@@ -331,11 +260,12 @@ async function loadTrades() {
   clearTimeout(loadDebounce);
   loadDebounce = setTimeout(_doLoadTrades, 300);
 }
+
 async function _doLoadTrades() {
-  const acct  = document.getElementById('filterAccount').value;
-  const from  = document.getElementById('filterFrom').value;
-  const to    = document.getElementById('filterTo').value;
-  const tk    = document.getElementById('filterTicker').value;
+  const acct = document.getElementById('filterAccount').value;
+  const from = document.getElementById('filterFrom').value;
+  const to   = document.getElementById('filterTo').value;
+  const tk   = document.getElementById('filterTicker').value;
   let url = '/api/accountant/trades?limit=200';
   if (acct) url += `&account_id=${acct}`;
   if (from) url += `&date_from=${from}`;
@@ -356,39 +286,36 @@ function clearFilters() {
 }
 
 function renderTrades(trades) {
-  const tbody = document.getElementById('tradesTbody');
-  const empty = document.getElementById('tradesEmpty');
-  const wrap  = document.getElementById('tradesTableWrap');
-  const total = document.getElementById('tradesTotalRow');
+  const tbody    = document.getElementById('tradesTbody');
+  const empty    = document.getElementById('tradesEmpty');
+  const wrap     = document.getElementById('tradesTableWrap');
+  const totalRow = document.getElementById('tradesTotalRow');
   const countLbl = document.getElementById('tradesCountLabel');
-  const netTot = document.getElementById('tradesNetTotal');
+  const netTot   = document.getElementById('tradesNetTotal');
 
   if (!trades || trades.length === 0) {
     tbody.innerHTML = '';
     wrap.style.display = 'none';
     empty.style.display = 'block';
-    total.style.display = 'none';
+    totalRow.style.display = 'none';
     return;
   }
   wrap.style.display = 'block';
   empty.style.display = 'none';
-  total.style.display = 'flex';
+  totalRow.style.display = 'flex';
 
   let sumNet = 0;
   tbody.innerHTML = trades.map(t => {
     sumNet += parseFloat(t.net_pnl) || 0;
     const dateStr = (t.trade_date || '').slice(0,10);
-    const notes = t.notes ? `<span title="${escHtml(t.notes)}" style="color:var(--text-dim);font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle;">${escHtml(t.notes.slice(0,40))}${t.notes.length>40?'…':''}</span>` : '<span style="color:var(--text-dim);">—</span>';
-    const side = t.side ? `<span style="font-size:11px;padding:2px 6px;border-radius:3px;background:${t.side==='long'?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)'};color:${t.side==='long'?'var(--ideal)':'var(--avoid)'};">${t.side.toUpperCase()}</span>` : '<span style="color:var(--text-dim);">—</span>';
+    const notes = t.notes
+      ? `<span title="${escHtml(t.notes)}" style="color:var(--text-dim);font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle;">${escHtml(t.notes.slice(0,50))}${t.notes.length>50?'…':''}</span>`
+      : '<span style="color:var(--text-dim);">—</span>';
     return `<tr>
-      <td class="mono dim">${dateStr}</td>
+      <td class="mono dim" style="white-space:nowrap;">${dateStr}</td>
       <td><span class="mono" style="font-weight:700;">${escHtml(t.ticker)}</span></td>
       <td style="font-size:12px;color:var(--text-muted);">${escHtml(t.account_name||'—')}</td>
-      <td>${side}</td>
-      <td class="mono">${fmtPnl(t.gross_pnl)}</td>
-      <td class="mono dim">${t.fees ? fmtMoney(t.fees) : '—'}</td>
       <td class="mono">${fmtPnl(t.net_pnl)}</td>
-      <td style="font-size:11px;color:var(--text-dim);">${escHtml(t.strategy_tag||'—')}</td>
       <td>${notes}</td>
       <td class="action-cell">
         <button class="btn btn-sm" onclick="openEditModal(${t.id})" style="margin-right:4px;">Edit</button>
@@ -398,31 +325,18 @@ function renderTrades(trades) {
   }).join('');
 
   countLbl.textContent = `${trades.length} trade${trades.length!==1?'s':''}`;
-  const s = Math.abs(sumNet).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-  netTot.innerHTML = `Total Net P&L: ${fmtPnl(sumNet)}`;
-}
-
-function escHtml(s) {
-  if (!s) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  netTot.innerHTML = `Total P&L: ${fmtPnl(sumNet)}`;
 }
 
 // ── Trade modal ─────────────────────────────────────────────────
 function openTradeModal(prefill = {}) {
+  _editingTrade = null;
   document.getElementById('tradeId').value = '';
   document.getElementById('tradeModalTitle').textContent = 'Log Trade';
   document.getElementById('tradeSubmitBtn').textContent = 'Save Trade';
   document.getElementById('f_trade_date').value = prefill.trade_date || todayISO();
   document.getElementById('f_ticker').value = prefill.ticker || '';
-  document.getElementById('f_side').value = '';
-  document.getElementById('f_gross_pnl').value = '';
-  document.getElementById('f_fees').value = '';
-  document.getElementById('f_net_pnl').value = '';
-  document.getElementById('f_quantity').value = '';
-  document.getElementById('f_entry_price').value = '';
-  document.getElementById('f_exit_price').value = '';
-  document.getElementById('f_strategy_tag').value = '';
-  document.getElementById('f_confidence_tag').value = '';
+  document.getElementById('f_pnl').value = '';
   document.getElementById('f_notes').value = '';
   document.getElementById('tradeFormError').style.display = 'none';
   if (ACCOUNTS.length > 0) document.getElementById('f_account_id').value = ACCOUNTS[0].id;
@@ -437,58 +351,72 @@ function closeTradeModal() {
 function openEditModal(id) {
   const t = allTrades.find(x => x.id === id);
   if (!t) return;
+  _editingTrade = t;
   document.getElementById('tradeId').value = t.id;
   document.getElementById('tradeModalTitle').textContent = 'Edit Trade';
   document.getElementById('tradeSubmitBtn').textContent = 'Update Trade';
   document.getElementById('f_account_id').value = t.account_id;
   document.getElementById('f_trade_date').value = (t.trade_date||'').slice(0,10);
   document.getElementById('f_ticker').value = t.ticker;
-  document.getElementById('f_side').value = t.side || '';
-  document.getElementById('f_gross_pnl').value = t.gross_pnl;
-  document.getElementById('f_fees').value = t.fees || '';
-  document.getElementById('f_net_pnl').value = t.net_pnl;
-  document.getElementById('f_quantity').value = t.quantity || '';
-  document.getElementById('f_entry_price').value = t.entry_price || '';
-  document.getElementById('f_exit_price').value = t.exit_price || '';
-  document.getElementById('f_strategy_tag').value = t.strategy_tag || '';
-  document.getElementById('f_confidence_tag').value = t.confidence_tag || '';
+  document.getElementById('f_pnl').value = t.net_pnl;
   document.getElementById('f_notes').value = t.notes || '';
   document.getElementById('tradeFormError').style.display = 'none';
   document.getElementById('tradeModal').classList.add('open');
 }
 
 async function submitTrade() {
-  const btn = document.getElementById('tradeSubmitBtn');
+  const btn   = document.getElementById('tradeSubmitBtn');
   const errEl = document.getElementById('tradeFormError');
   errEl.style.display = 'none';
 
-  const acctId  = parseInt(document.getElementById('f_account_id').value);
-  const date    = document.getElementById('f_trade_date').value;
-  const ticker  = document.getElementById('f_ticker').value.toUpperCase().trim();
-  const gross   = parseFloat(document.getElementById('f_gross_pnl').value);
-  const fees    = parseFloat(document.getElementById('f_fees').value) || 0;
-  const net     = parseFloat(document.getElementById('f_net_pnl').value);
+  const acctId = parseInt(document.getElementById('f_account_id').value);
+  const date   = document.getElementById('f_trade_date').value;
+  const ticker = document.getElementById('f_ticker').value.toUpperCase().trim();
+  const pnl    = parseFloat(document.getElementById('f_pnl').value);
+  const notes  = document.getElementById('f_notes').value;
 
   if (!ticker)   { showErr('Ticker is required.'); return; }
-  if (!date)     { showErr('Trade date is required.'); return; }
-  if (isNaN(gross)) { showErr('Gross P&L is required.'); return; }
+  if (!date)     { showErr('Date is required.'); return; }
+  if (isNaN(pnl)) { showErr('P&L is required.'); return; }
 
-  const payload = {
-    account_id: acctId,
-    trade_date: date,
-    ticker,
-    side:            document.getElementById('f_side').value,
-    gross_pnl:       gross,
-    fees,
-    net_pnl:         isNaN(net) ? gross - fees : net,
-    quantity:        parseFloat(document.getElementById('f_quantity').value) || null,
-    entry_price:     parseFloat(document.getElementById('f_entry_price').value) || null,
-    exit_price:      parseFloat(document.getElementById('f_exit_price').value) || null,
-    strategy_tag:    document.getElementById('f_strategy_tag').value,
-    confidence_tag:  document.getElementById('f_confidence_tag').value,
-    notes:           document.getElementById('f_notes').value,
-    screenshot_url:  '',
-  };
+  let payload;
+  if (_editingTrade) {
+    // Preserve all existing fields, only update the 5 visible ones
+    const fees = parseFloat(_editingTrade.fees) || 0;
+    payload = {
+      account_id:     acctId,
+      trade_date:     date,
+      ticker,
+      side:           _editingTrade.side || '',
+      gross_pnl:      pnl + fees,
+      fees,
+      net_pnl:        pnl,
+      quantity:       _editingTrade.quantity || null,
+      entry_price:    _editingTrade.entry_price || null,
+      exit_price:     _editingTrade.exit_price || null,
+      strategy_tag:   _editingTrade.strategy_tag || '',
+      confidence_tag: _editingTrade.confidence_tag || '',
+      notes,
+      screenshot_url: _editingTrade.screenshot_url || '',
+    };
+  } else {
+    payload = {
+      account_id:     acctId,
+      trade_date:     date,
+      ticker,
+      side:           '',
+      gross_pnl:      pnl,
+      fees:           0,
+      net_pnl:        pnl,
+      quantity:       null,
+      entry_price:    null,
+      exit_price:     null,
+      strategy_tag:   '',
+      confidence_tag: '',
+      notes,
+      screenshot_url: '',
+    };
+  }
 
   const tradeId = document.getElementById('tradeId').value;
   const isEdit  = !!tradeId;
@@ -499,14 +427,14 @@ async function submitTrade() {
   btn.innerHTML = '<span class="spinner"></span>';
   const res = await apiFetch(url, {
     method,
-    headers: {'Content-Type': 'application/json'},
+    headers: {'Content-Type':'application/json'},
     body: JSON.stringify(payload),
   });
   btn.disabled = false;
   btn.textContent = isEdit ? 'Update Trade' : 'Save Trade';
   if (!res) return;
   if (!res.ok) {
-    const err = await res.json().catch(() => ({detail: 'Unknown error'}));
+    const err = await res.json().catch(() => ({detail:'Unknown error'}));
     showErr(err.detail || 'Failed to save trade.');
     return;
   }
@@ -544,15 +472,10 @@ async function confirmDelete() {
   }
 }
 
-// ── Close modals on overlay click ───────────────────────────────
-document.getElementById('tradeModal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeTradeModal();
-});
-document.getElementById('deleteModal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeDeleteModal();
-});
+// Close on overlay click
+document.getElementById('tradeModal').addEventListener('click', e => { if (e.target===e.currentTarget) closeTradeModal(); });
+document.getElementById('deleteModal').addEventListener('click', e => { if (e.target===e.currentTarget) closeDeleteModal(); });
 
-// ── Init ────────────────────────────────────────────────────────
 loadTrades();
 </script>
 {% endblock %}

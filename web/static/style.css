@@ -1227,3 +1227,78 @@ td { padding: 10px 14px; vertical-align: middle; }
   .cal-cell { min-height: 44px; }
   .cal-day-num { font-size: 11px; }
 }
+
+/* ================================================================
+   STATUS DOTS — dashboard scan status indicators
+   ================================================================ */
+.status-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.status-dot.completed  { background: var(--ideal); }
+.status-dot.running    { background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulse-dot 1.4s ease-in-out infinite; }
+.status-dot.pending    { background: var(--watchlist); }
+.status-dot.failed     { background: var(--avoid); }
+.status-dot.cancelled  { background: var(--text-dim); }
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* ================================================================
+   FORM UTILITIES
+   ================================================================ */
+.form-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.form-error {
+  color: var(--avoid);
+  font-size: 12px;
+  padding: 8px 12px;
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: var(--radius);
+  margin-top: 6px;
+}
+
+/* ================================================================
+   TYPE-BASED TAX BADGE — shown in accounts list
+   ================================================================ */
+.tax-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(99,102,241,0.15);
+  color: var(--accent);
+  letter-spacing: 0.3px;
+}
+.tax-badge.zero {
+  background: rgba(16,185,129,0.12);
+  color: var(--ideal);
+}
+
+/* ================================================================
+   ACCOUNT TYPE INFO STRIP — create/edit form hint
+   ================================================================ */
+.type-info-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(99,102,241,0.07);
+  border: 1px solid rgba(99,102,241,0.18);
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.type-info-strip b { color: var(--text); }

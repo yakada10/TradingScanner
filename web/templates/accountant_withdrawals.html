@@ -35,22 +35,18 @@
     </a>
   </div>
 
-  <!-- Disclaimer -->
   <div class="disclaimer-box">
     <strong>Planning estimates only — not tax or legal advice.</strong>
-    Values shown are estimates based on your configured reserve percentages and account type rules.
-    Actual tax treatment depends on your specific situation, income, filing status, age, IRA basis,
-    applicable exceptions, and current tax law. Retirement account rules (Roth IRA, Traditional IRA,
-    Rollover IRA) are especially complex. <strong>Always consult a CPA or tax professional</strong>
-    before making distribution decisions.
+    Values shown are estimates based on account type rules.
+    Actual tax treatment depends on your income, filing status, age, IRA basis, applicable exceptions, and current tax law.
+    <strong>Always consult a CPA or tax professional</strong> before making distribution decisions.
   </div>
 
   {% if not accounts %}
   <div class="card">
     <div class="empty-state" style="padding:64px 24px;">
-      <div class="icon">💸</div>
       <h3>No accounts set up</h3>
-      <p>Create a trading account first, then you can record withdrawals and distributions for it.</p>
+      <p>Create a trading account first, then record withdrawals and distributions for it.</p>
       <a href="/accountant/accounts" class="btn btn-primary">Set up an account</a>
     </div>
   </div>
@@ -80,7 +76,7 @@
     </div>
   </div>
 
-  <!-- Filter row -->
+  <!-- Filter -->
   <div class="acct-filters" style="margin-bottom:16px;">
     <select class="form-select" id="wdFilterAcct" onchange="loadWithdrawals()" style="min-width:160px;">
       <option value="">All Accounts</option>
@@ -91,51 +87,53 @@
     <button class="btn btn-sm" onclick="clearFilters()">Clear</button>
   </div>
 
-  <!-- Withdrawals table -->
-  <div class="acct-table-wrap" id="wdTableWrap">
-    <table class="acct-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Account</th>
-          <th>Gross Amount</th>
-          <th>Reserve %</th>
-          <th>Est. Tax</th>
-          <th>Est. Penalty</th>
-          <th>Net To Owner</th>
-          <th>Type</th>
-          <th>Notes</th>
-          <th style="text-align:right;">Actions</th>
-        </tr>
-      </thead>
-      <tbody id="wdTbody">
-        <tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-dim);">
-          <span class="spinner"></span> Loading…
-        </td></tr>
-      </tbody>
-    </table>
-  </div>
-  <div id="wdEmpty" class="empty-state" style="display:none;padding:48px 24px;">
-    <div class="icon">💸</div>
-    <h3>No withdrawals recorded</h3>
-    <p>Record your first distribution to track tax reserves and net owner cash across all accounts.</p>
-    <button class="btn btn-primary" onclick="openWithdrawalModal()">Record a withdrawal</button>
-  </div>
-  <div id="wdTotalRow" style="display:none;padding:12px 20px;border-top:1px solid var(--border);background:var(--surface2);border-radius:0 0 var(--radius-lg) var(--radius-lg);">
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;font-size:12px;">
-      <div><span style="color:var(--text-dim);">Gross: </span><span id="wdTotGross" style="font-family:'SF Mono',monospace;font-weight:600;"></span></div>
-      <div><span style="color:var(--text-dim);">Tax Est.: </span><span id="wdTotTax" style="font-family:'SF Mono',monospace;color:var(--watchlist);font-weight:600;"></span></div>
-      <div><span style="color:var(--text-dim);">Penalties: </span><span id="wdTotPenalty" style="font-family:'SF Mono',monospace;color:var(--avoid);font-weight:600;"></span></div>
-      <div><span style="color:var(--text-dim);">Net To Owner: </span><span id="wdTotNet" style="font-family:'SF Mono',monospace;color:var(--ideal);font-weight:600;"></span></div>
+  <!-- Table -->
+  <div class="card" id="wdTableWrap" style="display:none;">
+    <div class="table-scroll">
+      <table class="acct-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Account</th>
+            <th>Gross</th>
+            <th>Est. Tax</th>
+            <th>Est. Penalty</th>
+            <th>Net To Owner</th>
+            <th>Notes</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="wdTbody"></tbody>
+      </table>
+    </div>
+    <div id="wdTotalRow" style="padding:12px 20px;border-top:1px solid var(--border);">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;font-size:12px;">
+        <div><span style="color:var(--text-dim);">Gross: </span><span id="wdTotGross" style="font-family:'SF Mono',monospace;font-weight:600;"></span></div>
+        <div><span style="color:var(--text-dim);">Tax Est.: </span><span id="wdTotTax" style="font-family:'SF Mono',monospace;color:var(--watchlist);font-weight:600;"></span></div>
+        <div><span style="color:var(--text-dim);">Penalties: </span><span id="wdTotPenalty" style="font-family:'SF Mono',monospace;color:var(--avoid);font-weight:600;"></span></div>
+        <div><span style="color:var(--text-dim);">Net: </span><span id="wdTotNet" style="font-family:'SF Mono',monospace;color:var(--ideal);font-weight:600;"></span></div>
+      </div>
     </div>
   </div>
 
-  {% endif %}
-</div><!-- /page-content -->
+  <div id="wdEmpty" class="card" style="display:none;">
+    <div class="empty-state" style="padding:56px 24px;">
+      <h3>No withdrawals recorded</h3>
+      <p>Record your first distribution to track tax reserves and net owner cash across accounts.</p>
+      <button class="btn btn-primary" onclick="openWithdrawalModal()">Record a withdrawal</button>
+    </div>
+  </div>
 
-<!-- ── Withdrawal Modal ─────────────────────────────────────────── -->
+  <div id="wdLoading" style="text-align:center;padding:48px;color:var(--text-dim);">
+    <span class="spinner"></span> Loading…
+  </div>
+
+  {% endif %}
+</div>
+
+<!-- ── Withdrawal Modal ──────────────────────────────────────────── -->
 <div class="modal-overlay" id="wdModal">
-  <div class="modal" style="max-width:580px;">
+  <div class="modal" style="max-width:520px;">
     <div class="modal-header">
       <div class="modal-title" id="wdModalTitle">Record Withdrawal</div>
       <button class="modal-close" onclick="closeWdModal()">×</button>
@@ -143,14 +141,13 @@
     <div class="modal-body">
       <input type="hidden" id="wdId">
 
+      <!-- Row 1: Account + Date -->
       <div class="form-row" style="margin-bottom:16px;">
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">Account *</label>
           <select class="form-select" id="wf_account_id" onchange="onWdAccountChange()">
             {% for acct in accounts %}
-            <option value="{{ acct.id }}"
-                    data-type="{{ acct.account_type }}"
-                    data-reserve="{{ acct.default_tax_reserve_pct }}">{{ acct.name }}</option>
+            <option value="{{ acct.id }}" data-type="{{ acct.account_type }}">{{ acct.name }}</option>
             {% endfor %}
           </select>
         </div>
@@ -160,51 +157,44 @@
         </div>
       </div>
 
-      <!-- Account type info strip -->
-      <div id="wdTypeStrip" style="display:none;margin-bottom:16px;" class="disclaimer-box" style="padding:10px 14px;"></div>
-
-      <div class="form-row" style="margin-bottom:16px;">
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Gross Amount ($) *</label>
-          <input type="number" class="form-input" id="wf_gross" step="0.01" placeholder="0.00" oninput="recalcEstimate()">
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Tax Reserve % *</label>
-          <input type="number" class="form-input" id="wf_reserve_pct" step="0.1" min="0" max="100" placeholder="30" oninput="recalcEstimate()">
-        </div>
+      <!-- Row 2: Gross Amount (full width) -->
+      <div class="form-group" style="margin-bottom:16px;">
+        <label class="form-label">Gross Amount ($) *</label>
+        <input type="number" class="form-input" id="wf_gross" step="0.01" placeholder="0.00" oninput="recalcEstimate()">
       </div>
 
-      <!-- Roth IRA / retirement fields (shown conditionally) -->
-      <div id="wdRetirementFields" style="display:none;margin-bottom:16px;">
+      <!-- IRA toggles — shown only for retirement accounts -->
+      <div id="wdRetirementFields" style="display:none;margin-bottom:16px;padding:12px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:var(--radius);">
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);margin-bottom:10px;">Retirement Account Options</div>
-        <div class="form-checkbox-row">
+        <div class="form-checkbox-row" style="margin-bottom:8px;">
           <input type="checkbox" id="wf_under_59" onchange="recalcEstimate()">
-          <label for="wf_under_59">Account holder is under age 59½</label>
+          <label for="wf_under_59" style="font-size:13px;cursor:pointer;">Account holder is under age 59½</label>
         </div>
         <div class="form-checkbox-row">
           <input type="checkbox" id="wf_penalty_exception" onchange="recalcEstimate()">
-          <label for="wf_penalty_exception">Penalty exception applies (SEPP, disability, first home, etc.)</label>
+          <label for="wf_penalty_exception" style="font-size:13px;cursor:pointer;">Penalty exception applies (SEPP, disability, first home, etc.)</label>
         </div>
       </div>
-      <div id="wdRothFields" style="display:none;margin-bottom:16px;">
+
+      <div id="wdRothFields" style="display:none;margin-bottom:16px;padding:12px 14px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:var(--radius);">
         <div class="form-checkbox-row">
           <input type="checkbox" id="wf_qualified" checked onchange="recalcEstimate()">
-          <label for="wf_qualified">This is a qualified Roth distribution (account ≥ 5 years old, age ≥ 59½ or qualifying event)</label>
+          <label for="wf_qualified" style="font-size:13px;cursor:pointer;">Qualified distribution (account ≥ 5 years old, age ≥ 59½ or qualifying event)</label>
         </div>
       </div>
 
       <!-- Live estimate panel -->
-      <div class="estimate-panel" id="estimatePanel">
-        <div class="estimate-panel-title">Distribution Estimate (Planning Only)</div>
+      <div class="estimate-panel" id="estimatePanel" style="margin-bottom:16px;">
+        <div class="estimate-panel-title">Distribution Estimate <span style="font-size:10px;font-weight:400;opacity:0.7;">(planning only)</span></div>
         <div class="estimate-row">
-          <span class="label">Gross Amount Requested</span>
+          <span class="label">Gross Amount</span>
           <span class="value" id="ep_gross">$0.00</span>
         </div>
         <div class="estimate-row">
-          <span class="label">Est. Tax Reserve (<span id="ep_pct">0</span>%)</span>
+          <span class="label">Est. Tax (<span id="ep_pct">0</span>% — <span id="ep_type_label">auto</span>)</span>
           <span class="value warn" id="ep_tax">$0.00</span>
         </div>
-        <div class="estimate-row" id="ep_penalty_row">
+        <div class="estimate-row" id="ep_penalty_row" style="display:none;">
           <span class="label">Est. Early Withdrawal Penalty (10%)</span>
           <span class="value neg" id="ep_penalty">$0.00</span>
         </div>
@@ -214,24 +204,13 @@
         </div>
       </div>
 
-      <div style="margin-top:16px;" class="form-row">
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Distribution Type</label>
-          <select class="form-select" id="wf_dist_type">
-            <option value="">— select —</option>
-            {% for val, label in distribution_types %}
-            <option value="{{ val }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-
-      <div class="form-group" style="margin-top:16px;">
+      <!-- Notes -->
+      <div class="form-group" style="margin-bottom:0;">
         <label class="form-label">Notes</label>
-        <textarea class="form-textarea" id="wf_notes" placeholder="Purpose, context, tax payment plan…"></textarea>
+        <textarea class="form-textarea" id="wf_notes" placeholder="Purpose, context, tax payment plan…" rows="3"></textarea>
       </div>
 
-      <div id="wdFormError" class="form-error" style="display:none;margin-top:8px;"></div>
+      <div id="wdFormError" class="form-error" style="display:none;margin-top:10px;"></div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeWdModal()">Cancel</button>
@@ -240,7 +219,7 @@
   </div>
 </div>
 
-<!-- ── Delete confirm modal ──────────────────────────────────── -->
+<!-- ── Delete confirm ────────────────────────────────────────────── -->
 <div class="modal-overlay" id="wdDeleteModal">
   <div class="modal" style="max-width:420px;">
     <div class="modal-header">
@@ -261,41 +240,105 @@
 
 {% block scripts %}
 <script>
-const ACCOUNTS = {{ accounts | tojson }};
-const ACCOUNT_TYPES = {{ account_types | tojson }};
+const ACCOUNTS  = {{ accounts | tojson }};
+const ACCT_MAP  = Object.fromEntries(ACCOUNTS.map(a => [a.id, a]));
+
+// Must mirror server's _TYPE_TAX_RATES
+const TYPE_TAX_RATES = {{ type_tax_rates | tojson }};
+
+const IRA_TYPES   = ['traditional_ira', 'rollover_ira'];
+const ROTH_TYPE   = 'roth_ira';
+const RETIRE_ALL  = [...IRA_TYPES, ROTH_TYPE];
+
 let allWithdrawals = [];
 let deleteWdId = null;
 
-// ── Account type info strings ────────────────────────────────────
-const TYPE_NOTES = {
-  taxable:         'Taxable brokerage: reserve % of gross is set aside as estimated tax. Net = gross minus reserved amount.',
-  roth_ira:        'Roth IRA: qualified distributions are completely tax-free. Non-qualified distributions may be subject to income tax on earnings + 10% penalty if under 59½.',
-  traditional_ira: 'Traditional IRA: full distribution amount is ordinary income. 10% early withdrawal penalty applies if under 59½ unless an exception is met.',
-  rollover_ira:    'Rollover IRA: treated as Traditional IRA. Full amount is taxable as ordinary income; 10% penalty if under 59½.',
-  futures:         'Futures / Section 1256: tax reserve % is used for planning estimates. 60/40 rule may apply. Consult your CPA for futures-specific treatment.',
-  prop:            'Prop account: distributions may be self-employment income. Reserve % applies as planning estimate.',
-  paper:           'Paper / Demo: no real money — this record is for simulation purposes only.',
-  other:           'Custom account: reserve % applies as planning estimate.',
-};
-
-// ── Date helper ──────────────────────────────────────────────────
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-
-// ── Format helpers ───────────────────────────────────────────────
 function fmtUSD(v) {
   const n = parseFloat(v)||0;
   return '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
+function round2(v) { return Math.round(parseFloat(v)*100)/100; }
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Mirrors server's _estimate_withdrawal() exactly ─────────────
+function calcEstimate(type, gross, under59, penEx, qualified) {
+  gross = Math.max(parseFloat(gross)||0, 0);
+  const rate = TYPE_TAX_RATES[type] ?? 25;
+  let estTax=0, estPenalty=0, effectiveRate=0;
+
+  if (type === 'roth_ira') {
+    if (qualified) {
+      estTax = estPenalty = effectiveRate = 0;
+    } else {
+      effectiveRate = Math.max(rate, 20);
+      estTax = round2(gross * effectiveRate / 100);
+      estPenalty = (under59 && !penEx) ? round2(gross * 0.10) : 0;
+    }
+  } else if (IRA_TYPES.includes(type)) {
+    effectiveRate = rate;
+    estTax = round2(gross * rate / 100);
+    estPenalty = (under59 && !penEx) ? round2(gross * 0.10) : 0;
+  } else if (type === 'paper') {
+    estTax = estPenalty = effectiveRate = 0;
+  } else {
+    effectiveRate = rate;
+    estTax = round2(gross * rate / 100);
+    estPenalty = 0;
+  }
+  const net = Math.max(round2(gross - estTax - estPenalty), 0);
+  return { estTax, estPenalty, net, effectiveRate };
+}
+
+// ── Account type from selected account ──────────────────────────
+function getSelectedType() {
+  const sel = document.getElementById('wf_account_id');
+  const opt = sel.options[sel.selectedIndex];
+  return opt ? (opt.getAttribute('data-type') || 'taxable') : 'taxable';
+}
+
+function onWdAccountChange() {
+  const type = getSelectedType();
+  document.getElementById('wdRetirementFields').style.display = RETIRE_ALL.includes(type) ? 'block' : 'none';
+  document.getElementById('wdRothFields').style.display       = type === ROTH_TYPE ? 'block' : 'none';
+  recalcEstimate();
+}
+
+function recalcEstimate() {
+  const type     = getSelectedType();
+  const gross    = parseFloat(document.getElementById('wf_gross').value) || 0;
+  const under59  = document.getElementById('wf_under_59')?.checked  || false;
+  const penEx    = document.getElementById('wf_penalty_exception')?.checked || false;
+  const qual     = document.getElementById('wf_qualified')?.checked !== false;
+
+  const { estTax, estPenalty, net, effectiveRate } = calcEstimate(type, gross, under59, penEx, qual);
+
+  document.getElementById('ep_gross').textContent   = fmtUSD(gross);
+  document.getElementById('ep_pct').textContent     = effectiveRate.toFixed(0);
+  document.getElementById('ep_type_label').textContent = type.replace(/_/g,' ');
+  document.getElementById('ep_tax').textContent     = fmtUSD(estTax);
+  document.getElementById('ep_penalty').textContent = fmtUSD(estPenalty);
+  document.getElementById('ep_net').textContent     = fmtUSD(net);
+  document.getElementById('ep_penalty_row').style.display = RETIRE_ALL.includes(type) ? 'flex' : 'none';
+}
 
 // ── Load withdrawals ─────────────────────────────────────────────
 async function loadWithdrawals() {
+  document.getElementById('wdLoading').style.display = 'block';
+  document.getElementById('wdTableWrap').style.display = 'none';
+  document.getElementById('wdEmpty').style.display = 'none';
+
   const acct = document.getElementById('wdFilterAcct')?.value || '';
   let url = '/api/accountant/withdrawals?limit=100';
   if (acct) url += `&account_id=${acct}`;
   const res = await apiFetch(url);
+  document.getElementById('wdLoading').style.display = 'none';
   if (!res) return;
   allWithdrawals = await res.json();
   renderWithdrawals(allWithdrawals);
@@ -307,21 +350,17 @@ function clearFilters() {
 }
 
 function renderWithdrawals(items) {
-  const tbody = document.getElementById('wdTbody');
-  const empty = document.getElementById('wdEmpty');
-  const wrap  = document.getElementById('wdTableWrap');
-  const totRow = document.getElementById('wdTotalRow');
+  const tbody  = document.getElementById('wdTbody');
+  const empty  = document.getElementById('wdEmpty');
+  const wrap   = document.getElementById('wdTableWrap');
 
   if (!items || !items.length) {
-    tbody.innerHTML = '';
     wrap.style.display = 'none';
     empty.style.display = 'block';
-    totRow.style.display = 'none';
     return;
   }
   wrap.style.display = 'block';
   empty.style.display = 'none';
-  totRow.style.display = 'block';
 
   let sumGross=0, sumTax=0, sumPen=0, sumNet=0;
   tbody.innerHTML = items.map(w => {
@@ -330,18 +369,15 @@ function renderWithdrawals(items) {
     sumPen   += parseFloat(w.estimated_penalty)||0;
     sumNet   += parseFloat(w.net_to_owner)||0;
     const hasPen = parseFloat(w.estimated_penalty) > 0;
-    const notes = w.notes ? escHtml(w.notes.slice(0,60)) : '—';
-    const type = w.distribution_type ? escHtml(w.distribution_type.replace(/_/g,' ')) : '—';
+    const notes  = w.notes ? escHtml(w.notes.slice(0,60)) : '—';
     return `<tr>
-      <td class="mono dim">${(w.withdrawal_date||'').slice(0,10)}</td>
+      <td class="mono dim" style="white-space:nowrap;">${(w.withdrawal_date||'').slice(0,10)}</td>
       <td style="font-size:12px;color:var(--text-muted);">${escHtml(w.account_name||'—')}</td>
       <td class="mono" style="font-weight:600;">${fmtUSD(w.gross_amount)}</td>
-      <td class="mono dim">${parseFloat(w.tax_reserve_pct||0).toFixed(1)}%</td>
       <td class="mono" style="color:var(--watchlist);">${fmtUSD(w.estimated_tax)}</td>
       <td class="mono" style="color:${hasPen?'var(--avoid)':'var(--text-dim)'};">${fmtUSD(w.estimated_penalty)}</td>
       <td class="mono pnl-pos">${fmtUSD(w.net_to_owner)}</td>
-      <td style="font-size:11px;color:var(--text-dim);text-transform:capitalize;">${type}</td>
-      <td style="font-size:11px;color:var(--text-dim);max-width:140px;">${notes}</td>
+      <td style="font-size:11px;color:var(--text-dim);max-width:160px;">${notes}</td>
       <td class="action-cell">
         <button class="btn btn-sm" onclick="openEditWd(${w.id})" style="margin-right:4px;">Edit</button>
         <button class="btn btn-sm btn-danger" onclick="openWdDeleteModal(${w.id})">Del</button>
@@ -349,112 +385,23 @@ function renderWithdrawals(items) {
     </tr>`;
   }).join('');
 
-  document.getElementById('wdTotGross').textContent  = fmtUSD(sumGross);
-  document.getElementById('wdTotTax').textContent    = fmtUSD(sumTax);
+  document.getElementById('wdTotGross').textContent   = fmtUSD(sumGross);
+  document.getElementById('wdTotTax').textContent     = fmtUSD(sumTax);
   document.getElementById('wdTotPenalty').textContent = fmtUSD(sumPen);
-  document.getElementById('wdTotNet').textContent    = fmtUSD(sumNet);
+  document.getElementById('wdTotNet').textContent     = fmtUSD(sumNet);
 }
 
-function escHtml(s) {
-  if (!s) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// ── Account change handler in modal ─────────────────────────────
-function onWdAccountChange() {
-  const sel = document.getElementById('wf_account_id');
-  const opt = sel.options[sel.selectedIndex];
-  const type = opt.getAttribute('data-type') || 'taxable';
-  const reserve = opt.getAttribute('data-reserve') || '30';
-
-  // Update reserve % from account default
-  if (!document.getElementById('wdId').value) {
-    document.getElementById('wf_reserve_pct').value = parseFloat(reserve).toFixed(1);
-  }
-
-  // Show/hide retirement fields
-  const retFields  = document.getElementById('wdRetirementFields');
-  const rothFields = document.getElementById('wdRothFields');
-  const typeStrip  = document.getElementById('wdTypeStrip');
-
-  retFields.style.display  = ['traditional_ira','rollover_ira'].includes(type) ? 'block' : 'none';
-  rothFields.style.display = type === 'roth_ira' ? 'block' : 'none';
-
-  // Type info strip
-  const note = TYPE_NOTES[type];
-  if (note) {
-    typeStrip.textContent = note;
-    typeStrip.style.display = 'block';
-  } else {
-    typeStrip.style.display = 'none';
-  }
-
-  // Roth IRA: if qualified, force reserve=0
-  if (type === 'roth_ira') {
-    const qual = document.getElementById('wf_qualified').checked;
-    if (qual) document.getElementById('wf_reserve_pct').value = '0';
-  }
-
-  // Hide penalty row for non-retirement
-  const penRow = document.getElementById('ep_penalty_row');
-  penRow.style.display = ['roth_ira','traditional_ira','rollover_ira'].includes(type) ? 'flex' : 'none';
-
-  recalcEstimate();
-}
-
-function recalcEstimate() {
-  const sel    = document.getElementById('wf_account_id');
-  const opt    = sel.options[sel.selectedIndex];
-  const type   = opt ? opt.getAttribute('data-type') : 'taxable';
-  const gross  = parseFloat(document.getElementById('wf_gross').value) || 0;
-  const resPct = parseFloat(document.getElementById('wf_reserve_pct').value) || 0;
-  const under59 = document.getElementById('wf_under_59')?.checked || false;
-  const penEx   = document.getElementById('wf_penalty_exception')?.checked || false;
-  const qualified = document.getElementById('wf_qualified')?.checked !== false;
-
-  // Mirror server logic in JS
-  let tax = 0, penalty = 0, net = gross, retained = 0;
-  if (type === 'roth_ira' && qualified) {
-    tax = 0; penalty = 0; net = gross; retained = 0;
-    document.getElementById('wf_reserve_pct').value = '0';
-  } else if (type === 'roth_ira') {
-    tax = round2(gross * resPct / 100);
-    penalty = (under59 && !penEx) ? round2(gross * 0.10) : 0;
-    retained = tax;
-    net = round2(gross - tax - penalty);
-  } else if (['traditional_ira','rollover_ira'].includes(type)) {
-    tax = round2(gross * resPct / 100);
-    penalty = (under59 && !penEx) ? round2(gross * 0.10) : 0;
-    retained = tax;
-    net = round2(gross - tax - penalty);
-  } else {
-    tax = round2(gross * resPct / 100);
-    penalty = 0;
-    retained = tax;
-    net = round2(gross - tax);
-  }
-  net = Math.max(net, 0);
-
-  document.getElementById('ep_gross').textContent   = fmtUSD(gross);
-  document.getElementById('ep_pct').textContent     = resPct.toFixed(1);
-  document.getElementById('ep_tax').textContent     = fmtUSD(tax);
-  document.getElementById('ep_penalty').textContent = fmtUSD(penalty);
-  document.getElementById('ep_net').textContent     = fmtUSD(net);
-  document.getElementById('ep_penalty_row').style.display =
-    ['roth_ira','traditional_ira','rollover_ira'].includes(type) ? 'flex' : 'none';
-}
-
-function round2(v) { return Math.round(parseFloat(v)*100)/100; }
-
-// ── Withdrawal modal ─────────────────────────────────────────────
+// ── Modal open/close ─────────────────────────────────────────────
 function openWithdrawalModal() {
   document.getElementById('wdId').value = '';
   document.getElementById('wdModalTitle').textContent = 'Record Withdrawal';
   document.getElementById('wdSubmitBtn').textContent = 'Save Distribution';
   document.getElementById('wf_date').value = todayISO();
   document.getElementById('wf_gross').value = '';
-  document.getElementById('wf_dist_type').value = '';
   document.getElementById('wf_notes').value = '';
+  if (document.getElementById('wf_under_59')) document.getElementById('wf_under_59').checked = false;
+  if (document.getElementById('wf_penalty_exception')) document.getElementById('wf_penalty_exception').checked = false;
+  if (document.getElementById('wf_qualified')) document.getElementById('wf_qualified').checked = true;
   document.getElementById('wdFormError').style.display = 'none';
   if (ACCOUNTS.length) document.getElementById('wf_account_id').value = ACCOUNTS[0].id;
   onWdAccountChange();
@@ -475,8 +422,6 @@ function openEditWd(id) {
   document.getElementById('wf_account_id').value = w.account_id;
   document.getElementById('wf_date').value = (w.withdrawal_date||'').slice(0,10);
   document.getElementById('wf_gross').value = w.gross_amount;
-  document.getElementById('wf_reserve_pct').value = w.tax_reserve_pct;
-  document.getElementById('wf_dist_type').value = w.distribution_type || '';
   document.getElementById('wf_notes').value = w.notes || '';
   if (document.getElementById('wf_under_59'))
     document.getElementById('wf_under_59').checked = !!w.under_59_5;
@@ -490,26 +435,23 @@ function openEditWd(id) {
 }
 
 async function submitWithdrawal() {
-  const btn = document.getElementById('wdSubmitBtn');
+  const btn   = document.getElementById('wdSubmitBtn');
   const errEl = document.getElementById('wdFormError');
   errEl.style.display = 'none';
 
   const acctId = parseInt(document.getElementById('wf_account_id').value);
   const date   = document.getElementById('wf_date').value;
   const gross  = parseFloat(document.getElementById('wf_gross').value);
-  const resPct = parseFloat(document.getElementById('wf_reserve_pct').value) || 0;
 
-  if (!date)       { showErr('Date is required.'); return; }
-  if (isNaN(gross) || gross <= 0) { showErr('Gross amount must be a positive number.'); return; }
+  if (!date)              { showErr('Date is required.'); return; }
+  if (isNaN(gross)||gross<=0) { showErr('Gross amount must be a positive number.'); return; }
 
   const payload = {
     account_id:             acctId,
     withdrawal_date:        date,
     gross_amount:           gross,
-    tax_reserve_pct:        resPct,
-    distribution_type:      document.getElementById('wf_dist_type').value,
-    penalty_exception:      document.getElementById('wf_penalty_exception')?.checked || false,
     under_59_5:             document.getElementById('wf_under_59')?.checked || false,
+    penalty_exception:      document.getElementById('wf_penalty_exception')?.checked || false,
     qualified_distribution: document.getElementById('wf_qualified')?.checked !== false,
     notes:                  document.getElementById('wf_notes').value.trim(),
   };
@@ -528,8 +470,9 @@ async function submitWithdrawal() {
   });
   btn.disabled = false;
   btn.textContent = isEdit ? 'Update Distribution' : 'Save Distribution';
+
   if (!res || !res.ok) {
-    const e = await (res ? res.json().catch(()=>({detail:'Error'})) : {detail:'Request failed'});
+    const e = await (res ? res.json().catch(()=>({detail:'Error'})) : Promise.resolve({detail:'Request failed'}));
     showErr(e.detail || 'Failed to save.');
     return;
   }
@@ -564,16 +507,12 @@ async function confirmWdDelete() {
   }
 }
 
-// Close modals on overlay click
 ['wdModal','wdDeleteModal'].forEach(id => {
   document.getElementById(id).addEventListener('click', e => {
-    if (e.target === e.currentTarget) {
-      id === 'wdModal' ? closeWdModal() : closeWdDeleteModal();
-    }
+    if (e.target === e.currentTarget) { id === 'wdModal' ? closeWdModal() : closeWdDeleteModal(); }
   });
 });
 
-// ── Init ────────────────────────────────────────────────────────
 {% if accounts %}
 loadWithdrawals();
 {% endif %}

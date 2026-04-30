@@ -327,55 +327,14 @@ async def dashboard_page(request: Request):
     except Exception as exc:
         log.error("dashboard accounting error: %s", exc, exc_info=True)
         acct_data = _EMPTY_ACCT
-    try:
-        return templates.TemplateResponse(request, "dashboard.html", {
-            "current_user": current_user,
-            "active_page":  "dashboard",
-            "stats":        stats,
-            "recent_jobs":  recent_jobs,
-            "acct":         acct_data,
-            "account_types": ACCOUNT_TYPES,
-        })
-    except Exception as exc:
-        import traceback
-        log.error("dashboard template error: %s", exc, exc_info=True)
-        return JSONResponse(
-            {"template_error": str(exc), "traceback": traceback.format_exc()},
-            status_code=500,
-        )
-
-
-@app.get("/debug/check")
-async def debug_check():
-    """Temporary diagnostic endpoint — remove after debugging."""
-    import traceback
-    results: dict = {}
-    try:
-        db.get_dashboard_stats()
-        results["get_dashboard_stats"] = "OK"
-    except Exception:
-        results["get_dashboard_stats"] = traceback.format_exc()
-    try:
-        db.list_recent_jobs(limit=1)
-        results["list_recent_jobs"] = "OK"
-    except Exception:
-        results["list_recent_jobs"] = traceback.format_exc()
-    try:
-        db.get_accounting_dashboard_data(1)
-        results["get_accounting_dashboard_data"] = "OK"
-    except Exception:
-        results["get_accounting_dashboard_data"] = traceback.format_exc()
-    try:
-        db.get_trade_stats(1)
-        results["get_trade_stats"] = "OK"
-    except Exception:
-        results["get_trade_stats"] = traceback.format_exc()
-    try:
-        db.get_withdrawal_totals(1)
-        results["get_withdrawal_totals"] = "OK"
-    except Exception:
-        results["get_withdrawal_totals"] = traceback.format_exc()
-    return results
+    return templates.TemplateResponse(request, "dashboard.html", {
+        "current_user": current_user,
+        "active_page":  "dashboard",
+        "stats":        stats,
+        "recent_jobs":  recent_jobs,
+        "acct":         acct_data,
+        "account_types": ACCOUNT_TYPES,
+    })
 
 
 @app.get("/scanner", response_class=HTMLResponse)
@@ -433,7 +392,6 @@ async def scan_progress(request: Request, job_id: str):
     processed = job.get("processed_tickers") or 0
     pct       = round(processed / total * 100, 1) if total > 0 else 0.0
 
-    # Estimated time remaining
     eta_seconds = None
     if job.get("started_at") and processed > 0 and total > processed:
         try:
@@ -441,7 +399,7 @@ async def scan_progress(request: Request, job_id: str):
             if started.tzinfo is None:
                 started = started.replace(tzinfo=tz.utc)
             elapsed = (datetime.now(tz.utc) - started).total_seconds()
-            rate = elapsed / processed          # seconds per ticker
+            rate = elapsed / processed
             eta_seconds = int(rate * (total - processed))
         except Exception:
             pass
@@ -506,19 +464,6 @@ ACCOUNT_TYPES = {
     "other":           "Other / Custom",
 }
 
-DISTRIBUTION_TYPES = [
-    ("profit_distribution",  "Profit Distribution"),
-    ("capital_return",       "Return of Capital"),
-    ("owner_draw",           "Owner Draw / Living Expenses"),
-    ("quarterly_tax",        "Quarterly Tax Estimate Payment"),
-    ("tax_reserve_transfer", "Tax Reserve Transfer"),
-    ("ira_qualified",        "Qualified IRA Distribution"),
-    ("ira_non_qualified",    "Non-Qualified IRA Distribution"),
-    ("roth_qualified",       "Roth Qualified Distribution"),
-    ("roth_non_qualified",   "Roth Non-Qualified Distribution"),
-    ("other",                "Other"),
-]
-
 STRATEGY_TAGS = [
     "Momentum", "Reversal", "Breakout", "Scalp", "Gap & Go",
     "VWAP", "Earnings Play", "Support / Resistance", "News Catalyst",
@@ -530,11 +475,30 @@ CONFIDENCE_TAGS = [
     "Impulsive / FOMO", "Revenge Trade", "Well-Planned",
 ]
 
+# Planning-estimate tax rates by account type.
+# The user never enters these manually — they are inferred from account type.
+# All rates are illustrative planning estimates. Actual tax depends on income,
+# filing status, jurisdiction, and many other factors. Consult a CPA.
+_TYPE_TAX_RATES: dict = {
+    "taxable":          30.0,   # blended short/long-term capital gains estimate
+    "futures":          25.0,   # 60/40 rule (60% LT + 40% ST) blended estimate
+    "roth_ira":          0.0,   # qualified distributions: completely tax-free
+    "traditional_ira":  25.0,   # ordinary income rate estimate
+    "rollover_ira":     25.0,   # treated same as Traditional IRA
+    "prop":             30.0,   # contractor / self-employment income
+    "paper":             0.0,   # demo account — no real tax consequences
+    "other":            25.0,
+}
+
+
+def _tax_rate_for_type(account_type: str) -> float:
+    """Return the planning-estimate tax % for a given account type."""
+    return float(_TYPE_TAX_RATES.get(account_type, 25.0))
+
 
 def _estimate_withdrawal(
     account_type: str,
     gross_amount: float,
-    tax_reserve_pct: float,
     under_59_5: bool = False,
     penalty_exception: bool = False,
     qualified_distribution: bool = True,
@@ -544,41 +508,39 @@ def _estimate_withdrawal(
     All values are ESTIMATES for planning purposes only — not tax advice.
     """
     gross = max(float(gross_amount or 0), 0)
-    res   = max(float(tax_reserve_pct or 0), 0)
+    rate  = _tax_rate_for_type(account_type)
 
-    if account_type in ("taxable", "futures"):
-        est_tax     = round(gross * res / 100, 2)
-        est_penalty = 0.0
-        retained    = est_tax
-        net         = round(gross - est_tax, 2)
-
-    elif account_type == "roth_ira":
+    if account_type == "roth_ira":
         if qualified_distribution:
-            est_tax = est_penalty = retained = 0.0
-            net = gross
+            # Qualified Roth: completely tax-free
+            est_tax = est_penalty = 0.0
+            effective_rate = 0.0
         else:
-            est_tax     = round(gross * res / 100, 2)
-            est_penalty = round(gross * 0.10, 2) if (under_59_5 and not penalty_exception) else 0.0
-            retained    = est_tax
-            net         = round(gross - est_tax - est_penalty, 2)
+            # Non-qualified: tax on earnings + possible 10% penalty
+            effective_rate = max(rate, 20.0)
+            est_tax        = round(gross * effective_rate / 100, 2)
+            est_penalty    = round(gross * 0.10, 2) if (under_59_5 and not penalty_exception) else 0.0
 
     elif account_type in ("traditional_ira", "rollover_ira"):
-        est_tax     = round(gross * res / 100, 2)
-        est_penalty = round(gross * 0.10, 2) if (under_59_5 and not penalty_exception) else 0.0
-        retained    = est_tax
-        net         = round(gross - est_tax - est_penalty, 2)
+        effective_rate = rate
+        est_tax        = round(gross * rate / 100, 2)
+        est_penalty    = round(gross * 0.10, 2) if (under_59_5 and not penalty_exception) else 0.0
 
-    else:  # prop, paper, other, unknown
-        est_tax     = round(gross * res / 100, 2)
-        est_penalty = 0.0
-        retained    = est_tax
-        net         = round(gross - est_tax, 2)
+    elif account_type == "paper":
+        effective_rate = est_tax = est_penalty = 0.0
 
+    else:   # taxable, futures, prop, other
+        effective_rate = rate
+        est_tax        = round(gross * rate / 100, 2)
+        est_penalty    = 0.0
+
+    net = max(round(gross - est_tax - est_penalty, 2), 0.0)
     return {
         "estimated_tax":        est_tax,
         "estimated_penalty":    est_penalty,
-        "net_to_owner":         max(net, 0.0),
-        "retained_tax_reserve": retained,
+        "net_to_owner":         net,
+        "retained_tax_reserve": est_tax,
+        "tax_reserve_pct":      effective_rate,
     }
 
 
@@ -597,14 +559,12 @@ async def accountant_trades_page(request: Request):
     accounts = db.get_trading_accounts(current_user["id"])
     stats    = db.get_trade_stats(current_user["id"])
     return templates.TemplateResponse(request, "accountant_trades.html", {
-        "current_user": current_user,
-        "active_page":  "accountant",
-        "active_sub":   "trades",
-        "accounts":     accounts,
-        "stats":        stats,
-        "account_types": ACCOUNT_TYPES,
-        "strategy_tags": STRATEGY_TAGS,
-        "confidence_tags": CONFIDENCE_TAGS,
+        "current_user":   current_user,
+        "active_page":    "accountant",
+        "active_sub":     "trades",
+        "accounts":       accounts,
+        "stats":          stats,
+        "account_types":  ACCOUNT_TYPES,
     })
 
 
@@ -643,14 +603,14 @@ async def accountant_account_detail_page(request: Request, account_id: int):
     wt      = db.get_withdrawal_totals(current_user["id"], account_id=account_id)
     series  = db.get_cumulative_pnl_series(current_user["id"], account_id=account_id)
     return templates.TemplateResponse(request, "accountant_account_detail.html", {
-        "current_user":  current_user,
-        "active_page":   "accountant",
-        "active_sub":    "accounts",
-        "account":       account,
-        "stats":         stats,
-        "wt":            wt,
-        "series_json":   __import__("json").dumps(series),
-        "account_types": ACCOUNT_TYPES,
+        "current_user":       current_user,
+        "active_page":        "accountant",
+        "active_sub":         "accounts",
+        "account":            account,
+        "stats":              stats,
+        "wt":                 wt,
+        "series_json":        __import__("json").dumps(series),
+        "account_types":      ACCOUNT_TYPES,
         "account_type_label": ACCOUNT_TYPES.get(account.get("account_type", ""), "Unknown"),
     })
 
@@ -661,13 +621,13 @@ async def accountant_withdrawals_page(request: Request):
     accounts = db.get_trading_accounts(current_user["id"])
     wt       = db.get_withdrawal_totals(current_user["id"])
     return templates.TemplateResponse(request, "accountant_withdrawals.html", {
-        "current_user":       current_user,
-        "active_page":        "accountant",
-        "active_sub":         "withdrawals",
-        "accounts":           accounts,
-        "wt":                 wt,
-        "account_types":      ACCOUNT_TYPES,
-        "distribution_types": DISTRIBUTION_TYPES,
+        "current_user":  current_user,
+        "active_page":   "accountant",
+        "active_sub":    "withdrawals",
+        "accounts":      accounts,
+        "wt":            wt,
+        "account_types": ACCOUNT_TYPES,
+        "type_tax_rates": _TYPE_TAX_RATES,
     })
 
 
@@ -681,7 +641,6 @@ class AccountCreate(BaseModel):
     account_type: str = "taxable"
     is_active: bool = True
     starting_balance: float = 0.0
-    default_tax_reserve_pct: float = 30.0
     notes: str = ""
 
 
@@ -701,7 +660,8 @@ async def api_create_account(request: Request, body: AccountCreate):
     acct_id = db.create_trading_account(
         user["id"], body.name.strip(), body.broker.strip() or None,
         body.account_type, body.is_active, body.starting_balance,
-        body.default_tax_reserve_pct, body.notes.strip() or None,
+        _tax_rate_for_type(body.account_type),  # auto-set from account type
+        body.notes.strip() or None,
     )
     return {"id": acct_id, "status": "created"}
 
@@ -719,7 +679,7 @@ async def api_update_account(request: Request, account_id: int, body: AccountCre
         account_type=body.account_type,
         is_active=1 if body.is_active else 0,
         starting_balance=body.starting_balance,
-        default_tax_reserve_pct=body.default_tax_reserve_pct,
+        default_tax_reserve_pct=_tax_rate_for_type(body.account_type),  # auto from type
         notes=body.notes.strip() or None,
     )
     return {"id": account_id, "status": "updated"}
@@ -778,15 +738,12 @@ async def api_get_trades(
 @app.post("/api/accountant/trades")
 async def api_create_trade(request: Request, body: TradeCreate):
     user = _require_user_api(request)
-    # Verify account belongs to user
     acct = db.get_trading_account(body.account_id, user["id"])
     if not acct:
         raise HTTPException(status_code=404, detail="Account not found")
     if not body.ticker.strip():
         raise HTTPException(status_code=400, detail="Ticker required")
-    # Auto-calculate net_pnl if not explicitly provided
     net_pnl = round(float(body.gross_pnl) - float(body.fees or 0), 2)
-    # Allow manual override if net_pnl differs meaningfully
     if abs(body.net_pnl - net_pnl) > 0.01:
         net_pnl = round(float(body.net_pnl), 2)
     trade_id = db.create_trade(
@@ -846,17 +803,19 @@ class WithdrawalCreate(BaseModel):
     account_id: int
     withdrawal_date: str
     gross_amount: float
-    tax_reserve_pct: float = 30.0
-    distribution_type: str = ""
-    penalty_exception: bool = False
     under_59_5: bool = False
+    penalty_exception: bool = False
     qualified_distribution: bool = True
     notes: str = ""
 
 
 @app.get("/api/accountant/withdrawals")
 async def api_get_withdrawals(
-    request: Request, account_id: int = None, limit: int = 100
+    request: Request,
+    account_id: int = None,
+    date_from: str = None,
+    date_to: str = None,
+    limit: int = 100,
 ):
     user = _require_user_api(request)
     return db.get_withdrawals(user["id"], account_id=account_id, limit=limit)
@@ -871,15 +830,17 @@ async def api_create_withdrawal(request: Request, body: WithdrawalCreate):
     if body.gross_amount <= 0:
         raise HTTPException(status_code=400, detail="Gross amount must be positive")
     estimates = _estimate_withdrawal(
-        acct["account_type"], body.gross_amount, body.tax_reserve_pct,
+        acct["account_type"], body.gross_amount,
         body.under_59_5, body.penalty_exception, body.qualified_distribution,
     )
     wd_id = db.create_withdrawal(
         user["id"], body.account_id, body.withdrawal_date, body.gross_amount,
-        body.tax_reserve_pct, estimates["estimated_tax"],
-        estimates["estimated_penalty"], estimates["net_to_owner"],
+        estimates["tax_reserve_pct"],
+        estimates["estimated_tax"],
+        estimates["estimated_penalty"],
+        estimates["net_to_owner"],
         estimates["retained_tax_reserve"],
-        body.distribution_type.strip() or None,
+        None,   # distribution_type — not captured in simplified form
         body.penalty_exception, body.under_59_5, body.qualified_distribution,
         body.notes.strip() or None,
     )
@@ -896,18 +857,18 @@ async def api_update_withdrawal(request: Request, withdrawal_id: int, body: With
     if not acct:
         raise HTTPException(status_code=404, detail="Account not found")
     estimates = _estimate_withdrawal(
-        acct["account_type"], body.gross_amount, body.tax_reserve_pct,
+        acct["account_type"], body.gross_amount,
         body.under_59_5, body.penalty_exception, body.qualified_distribution,
     )
     db.update_withdrawal(
         withdrawal_id, user["id"],
         account_id=body.account_id, withdrawal_date=body.withdrawal_date,
-        gross_amount=body.gross_amount, tax_reserve_pct=body.tax_reserve_pct,
+        gross_amount=body.gross_amount,
+        tax_reserve_pct=estimates["tax_reserve_pct"],
         estimated_tax=estimates["estimated_tax"],
         estimated_penalty=estimates["estimated_penalty"],
         net_to_owner=estimates["net_to_owner"],
         retained_tax_reserve=estimates["retained_tax_reserve"],
-        distribution_type=body.distribution_type.strip() or None,
         penalty_exception=1 if body.penalty_exception else 0,
         under_59_5=1 if body.under_59_5 else 0,
         qualified_distribution=1 if body.qualified_distribution else 0,
@@ -965,7 +926,7 @@ async def api_estimate_withdrawal(request: Request, body: WithdrawalCreate):
     if not acct:
         raise HTTPException(status_code=404, detail="Account not found")
     return _estimate_withdrawal(
-        acct["account_type"], body.gross_amount, body.tax_reserve_pct,
+        acct["account_type"], body.gross_amount,
         body.under_59_5, body.penalty_exception, body.qualified_distribution,
     )
 
