@@ -24,6 +24,7 @@ import time
 import gc
 import logging
 import threading
+from datetime import datetime, timezone
 from typing import Optional
 
 # Add project root to sys.path regardless of where this is launched from
@@ -44,6 +45,15 @@ from utils.serialize import result_to_dict
 log = logging.getLogger(__name__)
 
 POLL_INTERVAL = int(os.environ.get("WORKER_POLL_INTERVAL", "3"))  # seconds
+
+# ── Nightly scan scheduler ────────────────────────────────────────
+# Automatically submits a scan job once per day at the configured UTC hour.
+# Defaults: nyse_nasdaq_full at 05:00 UTC (~midnight US Eastern time).
+# Override via env vars in the Render dashboard.
+NIGHTLY_SCAN_ENABLED  = os.environ.get("NIGHTLY_SCAN_ENABLED", "true").lower() == "true"
+NIGHTLY_SCAN_UNIVERSE = os.environ.get("NIGHTLY_SCAN_UNIVERSE", "nyse_nasdaq_full")
+NIGHTLY_SCAN_HOUR_UTC = int(os.environ.get("NIGHTLY_SCAN_HOUR_UTC", "5"))   # 05:00 UTC ≈ midnight ET
+NIGHTLY_SCAN_MINUTE   = int(os.environ.get("NIGHTLY_SCAN_MINUTE",   "0"))
 
 _pipeline: Optional[ScoringPipeline] = None
 _loader: Optional[UniverseLoader] = None
@@ -130,6 +140,38 @@ def process_job(job: dict) -> None:
 
 
 # ------------------------------------------------------------------ #
+#  Nightly scan scheduler
+# ------------------------------------------------------------------ #
+
+def _nightly_scan_due() -> bool:
+    """
+    Return True if the nightly scan should be submitted now.
+
+    Fires once per day during the configured UTC minute window.
+    A DB check prevents duplicate submissions if the worker restarts
+    while the trigger minute is still active.
+    """
+    if not NIGHTLY_SCAN_ENABLED:
+        return False
+
+    now = datetime.now(timezone.utc)
+    if now.hour != NIGHTLY_SCAN_HOUR_UTC or now.minute != NIGHTLY_SCAN_MINUTE:
+        return False
+
+    # Already submitted a non-cancelled scan for this universe today?
+    today = now.date().isoformat()
+    from sqlalchemy import text
+    with db.get_engine().connect() as conn:
+        row = conn.execute(text("""
+            SELECT COUNT(*) FROM scan_jobs
+            WHERE universe = :uni
+              AND created_at >= :today
+              AND status NOT IN ('cancelled', 'failed')
+        """), {"uni": NIGHTLY_SCAN_UNIVERSE, "today": today}).fetchone()
+    return (row[0] if row else 0) == 0
+
+
+# ------------------------------------------------------------------ #
 #  Worker loop
 # ------------------------------------------------------------------ #
 
@@ -145,6 +187,9 @@ def run_worker_loop() -> None:
 
     log.info("Scanner worker started (poll interval %ds, history kept %d days)",
              POLL_INTERVAL, KEEP_DAYS)
+    if NIGHTLY_SCAN_ENABLED:
+        log.info("Nightly scan: universe=%s at %02d:%02d UTC",
+                 NIGHTLY_SCAN_UNIVERSE, NIGHTLY_SCAN_HOUR_UTC, NIGHTLY_SCAN_MINUTE)
 
     while True:
         try:
@@ -156,6 +201,15 @@ def run_worker_loop() -> None:
                 except Exception as exc:
                     log.warning("Cleanup error: %s", exc)
                 last_cleanup = now
+
+            # Nightly scan — submit automatically at the configured UTC time
+            try:
+                if _nightly_scan_due():
+                    job_id = db.create_job(NIGHTLY_SCAN_UNIVERSE)
+                    log.info("Nightly scan queued: universe=%s job_id=%s",
+                             NIGHTLY_SCAN_UNIVERSE, job_id)
+            except Exception as exc:
+                log.warning("Nightly scan scheduler error: %s", exc)
 
             jobs = db.get_pending_jobs(limit=1)
             if jobs:

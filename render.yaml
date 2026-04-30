@@ -135,6 +135,19 @@ services:
       - key: SCAN_HISTORY_DAYS
         value: "30"
 
+      # ── Nightly scan scheduler ─────────────────────────────────────
+      # Automatically queues one scan per day at the specified UTC hour.
+      # 05:00 UTC = ~midnight US Eastern (EST).  Change to 4 for EDT.
+      # Set NIGHTLY_SCAN_ENABLED=false to disable.
+      - key: NIGHTLY_SCAN_ENABLED
+        value: "true"
+      - key: NIGHTLY_SCAN_UNIVERSE
+        value: "nyse_nasdaq_full"   # covers NYSE + Nasdaq + AMEX (~4-5k stocks)
+      - key: NIGHTLY_SCAN_HOUR_UTC
+        value: "5"                  # 05:00 UTC = midnight ET (EST) / 1 AM ET (EDT)
+      - key: NIGHTLY_SCAN_MINUTE
+        value: "0"
+
       # Wired automatically from the same Postgres database
       - key: DATABASE_URL
         fromDatabase:
